@@ -1,0 +1,363 @@
+// Prisma Schema for MusicOnTheGo
+// This is the source of truth for your database structure
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - supports students, teachers, and admins
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole
+  
+  // Profile fields
+  instruments              String[] @default([])
+  experience              String   @default("")
+  location                String   @default("")
+  about                   String   @default("")
+  profileImage            String   @default("")
+  
+  // Teacher-specific fields
+  rate                    Float    @default(0)
+  specialties             String[] @default([])
+  averageRating           Float?
+  reviewCount             Int      @default(0)
+  
+  // Student-specific fields
+  skillLevel              String   @default("")
+  learningMode            String   @default("")
+  ageGroup                String   @default("")
+  availability            String   @default("")
+  goals                   String   @default("")
+  weeklyGoal              Int?
+  
+  // Auth fields
+  resetPasswordToken      String   @default("")
+  resetPasswordExpires    DateTime?
+  
+  // Preferences
+  pushNotificationsEnabled Boolean @default(true)
+  
+  // Relations
+  studentBookings         Booking[]        @relation("StudentBookings")
+  teacherBookings         Booking[]        @relation("TeacherBookings")
+  sentMessages           Message[]        @relation("SentMessages")
+  receivedMessages       Message[]        @relation("ReceivedMessages")
+  teacherAvailability    Availability[]
+  studentPracticeSessions PracticeSession[]
+  uploadedResources      Resource[]
+  assignedResources       Resource[]       @relation("ResourceAssignments")
+  teacherReviews          Review[]         @relation("TeacherReviews")
+  studentReviews          Review[]         @relation("StudentReviews")
+  communityPosts          CommunityPost[]
+  postLikes               CommunityPost[]  @relation("PostLikes")
+  postComments            Comment[]
+  sentInquiries           Inquiry[]        @relation("SentInquiries")
+  receivedInquiries       Inquiry[]        @relation("ReceivedInquiries")
+  
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+  
+  @@index([email])
+  @@index([role])
+  @@index([location])
+}
+
+enum UserRole {
+  student
+  teacher
+  admin
+}
+
+// Booking model
+model Booking {
+  id        String        @id @default(uuid())
+  studentId String
+  teacherId String
+  day       String        // Day name or date string
+  startTime String        // Time slot start (e.g., "14:00")
+  endTime   String        // Time slot end (e.g., "16:00")
+  status    BookingStatus @default(PENDING)
+  
+  // Relations
+  student   User          @relation("StudentBookings", fields: [studentId], references: [id], onDelete: Cascade)
+  teacher   User          @relation("TeacherBookings", fields: [teacherId], references: [id], onDelete: Cascade)
+  reviews   Review[]
+  
+  createdAt DateTime      @default(now())
+  updatedAt DateTime       @updatedAt
+  
+  @@index([studentId])
+  @@index([teacherId])
+  @@index([day, status])
+  @@index([teacherId, day, startTime, endTime, status])
+}
+
+enum BookingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Availability model
+model Availability {
+  id        String   @id @default(uuid())
+  teacherId String
+  day       String   // Day name or date string
+  date      DateTime? // Specific date (optional)
+  
+  // Relations
+  teacher   User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  timeSlots TimeSlot[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([teacherId])
+  @@index([day])
+  @@index([date])
+}
+
+model TimeSlot {
+  id             String       @id @default(uuid())
+  availabilityId String
+  start          String       // e.g., "14:00"
+  end            String       // e.g., "16:00"
+  
+  availability   Availability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Message model
+model Message {
+  id          String   @id @default(uuid())
+  senderId    String
+  recipientId String
+  text        String
+  read        Boolean  @default(false)
+  readAt      DateTime?
+  
+  // Relations
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User     @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([senderId, recipientId, createdAt(sort: Desc)])
+  @@index([recipientId, read])
+}
+
+// Practice Session model
+model PracticeSession {
+  id        String   @id @default(uuid())
+  studentId String
+  minutes   Int
+  focus     String
+  notes     String   @default("")
+  date      DateTime @default(now())
+  startTime DateTime @default(now())
+  endTime   DateTime?
+  
+  // Relations
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([studentId, date(sort: Desc)])
+  @@index([studentId, createdAt(sort: Desc)])
+}
+
+// Resource model
+model Resource {
+  id          String        @id @default(uuid())
+  title       String
+  description String        @default("")
+  fileUrl     String        @default("")
+  externalUrl String        @default("")
+  fileType    ResourceType
+  fileSize    Int           @default(0)
+  instrument  String
+  level       ResourceLevel
+  category    String        @default("")
+  uploadedById String
+  
+  // Relations
+  uploadedBy  User          @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  assignedTo  User[]        @relation("ResourceAssignments")
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  @@index([instrument, level])
+  @@index([uploadedById])
+  @@index([category])
+}
+
+enum ResourceType {
+  pdf
+  image
+  audio
+  video
+  link
+}
+
+enum ResourceLevel {
+  Beginner
+  Intermediate
+  Advanced
+}
+
+// Review model
+model Review {
+  id        String   @id @default(uuid())
+  teacherId String
+  studentId String
+  rating    Int      // 1-5
+  comment   String   @default("") @db.VarChar(1000)
+  bookingId String?
+  
+  // Relations
+  teacher   User     @relation("TeacherReviews", fields: [teacherId], references: [id], onDelete: Cascade)
+  student   User     @relation("StudentReviews", fields: [studentId], references: [id], onDelete: Cascade)
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([teacherId, studentId])
+  @@index([teacherId, createdAt(sort: Desc)])
+  @@index([studentId])
+  @@index([rating])
+}
+
+// Community Post model
+model CommunityPost {
+  id          String        @id @default(uuid())
+  authorId    String
+  title       String
+  description String        @default("")
+  mediaUrl    String
+  mediaType   MediaType
+  thumbnailUrl String      @default("")
+  instrument  String
+  level       PostLevel     @default(Beginner)
+  visibility  Visibility    @default(public)
+  likeCount   Int           @default(0)
+  commentCount Int          @default(0)
+  
+  // Relations
+  author      User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  likes       User[]        @relation("PostLikes")
+  comments    Comment[]
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  @@index([authorId, createdAt(sort: Desc)])
+  @@index([instrument, level])
+  @@index([visibility, createdAt(sort: Desc)])
+  @@index([likeCount(sort: Desc), createdAt(sort: Desc)])
+}
+
+enum MediaType {
+  video
+  audio
+  image
+}
+
+enum PostLevel {
+  Beginner
+  Intermediate
+  Advanced
+}
+
+enum Visibility {
+  public
+  students
+  teachers
+}
+
+// Comment model (for Community Posts)
+model Comment {
+  id        String        @id @default(uuid())
+  postId    String
+  authorId  String
+  text      String
+  
+  // Relations
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  
+  @@index([postId, createdAt(sort: Asc)])
+  @@index([authorId])
+}
+
+// Inquiry model
+model Inquiry {
+  id            String        @id @default(uuid())
+  studentId     String
+  teacherId     String
+  instrument    String
+  level         InquiryLevel
+  ageGroup      AgeGroup?
+  lessonType    LessonType
+  availability  String
+  message       String        @default("")
+  goals         String        @default("")
+  guardianName  String        @default("")
+  guardianPhone String        @default("")
+  guardianEmail String        @default("")
+  status        InquiryStatus @default(sent)
+  
+  // Relations
+  student       User          @relation("SentInquiries", fields: [studentId], references: [id], onDelete: Cascade)
+  teacher       User          @relation("ReceivedInquiries", fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  @@index([studentId])
+  @@index([teacherId])
+  @@index([status])
+}
+
+enum InquiryLevel {
+  Beginner
+  Intermediate
+  Advanced
+}
+
+enum AgeGroup {
+  Child
+  Teen
+  YoungAdult
+  Adult
+  Senior
+}
+
+enum LessonType {
+  InPerson
+  Online
+  Either
+}
+
+enum InquiryStatus {
+  sent
+  read
+  responded
+}
