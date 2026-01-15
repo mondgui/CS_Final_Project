@@ -53,8 +53,13 @@ model User {
   receivedMessages       Message[]        @relation("ReceivedMessages")
   teacherAvailability    Availability[]
   studentPracticeSessions PracticeSession[]
+  studentGoals            Goal[]
+  studentRecordings       Recording[]       @relation("StudentRecordings")
+  teacherRecordings       Recording[]       @relation("TeacherRecordings")
   uploadedResources      Resource[]
   assignedResources       Resource[]       @relation("ResourceAssignments")
+  resourceAssignmentsAsStudent ResourceAssignment[] @relation("ResourceAssignmentStudent")
+  resourceAssignmentsAsTeacher ResourceAssignment[] @relation("ResourceAssignmentTeacher")
   teacherReviews          Review[]         @relation("TeacherReviews")
   studentReviews          Review[]         @relation("StudentReviews")
   communityPosts          CommunityPost[]
@@ -179,6 +184,50 @@ model PracticeSession {
   @@index([studentId, createdAt(sort: Desc)])
 }
 
+// Goal model
+model Goal {
+  id           String   @id @default(uuid())
+  studentId    String
+  title        String
+  category     String
+  targetDate   DateTime
+  progress     Int      @default(0) // 0-100
+  weeklyMinutes Int     @default(0)
+  completed    Boolean  @default(false)
+  
+  // Relations
+  student      User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([studentId, createdAt(sort: Desc)])
+  @@index([studentId, completed])
+}
+
+// Recording model
+model Recording {
+  id                String   @id @default(uuid())
+  studentId         String
+  teacherId         String?
+  title             String
+  fileUrl           String   @default("")
+  duration          String   @default("")
+  studentNotes      String   @default("")
+  teacherFeedback   String   @default("")
+  hasTeacherFeedback Boolean @default(false)
+  
+  // Relations
+  student           User     @relation("StudentRecordings", fields: [studentId], references: [id], onDelete: Cascade)
+  teacher           User?    @relation("TeacherRecordings", fields: [teacherId], references: [id], onDelete: SetNull)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([studentId, createdAt(sort: Desc)])
+  @@index([teacherId])
+}
+
 // Resource model
 model Resource {
   id          String        @id @default(uuid())
@@ -196,6 +245,7 @@ model Resource {
   // Relations
   uploadedBy  User          @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   assignedTo  User[]        @relation("ResourceAssignments")
+  assignments ResourceAssignment[]
   
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -217,6 +267,28 @@ enum ResourceLevel {
   Beginner
   Intermediate
   Advanced
+}
+
+// Resource Assignment model (for notes on assignments)
+model ResourceAssignment {
+  id         String   @id @default(uuid())
+  resourceId String
+  studentId  String
+  teacherId  String
+  note       String   @default("")
+  
+  // Relations
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  student    User     @relation("ResourceAssignmentStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  teacher    User     @relation("ResourceAssignmentTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  @@unique([resourceId, studentId])
+  @@index([studentId, createdAt(sort: Desc)])
+  @@index([teacherId, createdAt(sort: Desc)])
+  @@index([resourceId])
 }
 
 // Review model
