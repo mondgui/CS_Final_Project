@@ -1,49 +1,74 @@
-// backend/routes/userRoutes.js
-
+// backend/routes/userRoutes.js - Converted to use Prisma
 import express from "express";
-import User from "../models/User.js";
+import bcrypt from "bcryptjs";
+import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import roleMiddleware from "../middleware/roleMiddleware.js";
 
 const router = express.Router();
 
-/* -----------------------------------------------------
-   GET ALL USERS  (DEV TEST ONLY)
------------------------------------------------------ */
+/**
+ * GET /api/users
+ * Get all users (DEV TEST ONLY)
+ */
 router.get("/", async (req, res) => {
   try {
-    const users = await User.find().select("-password");
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        instruments: true,
+        location: true,
+        profileImage: true,
+        createdAt: true,
+      },
+    });
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-/* -----------------------------------------------------
-   CREATE USER (DEV TEST ONLY — real registration is in authRoutes.js)
------------------------------------------------------ */
-router.post("/", async (req, res) => {
-  const user = new User({
-    name: req.body.name,
-    email: req.body.email,
-    password: req.body.password,
-    role: req.body.role || "student",
-  });
-
-  try {
-    const newUser = await user.save();
-    res.status(201).json(newUser);
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
-});
-
-/* -----------------------------------------------------
-   GET CURRENT LOGGED-IN USER
------------------------------------------------------ */
+/**
+ * GET /api/users/me
+ * Get current logged-in user
+ */
 router.get("/me", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        instruments: true,
+        experience: true,
+        location: true,
+        city: true,
+        state: true,
+        country: true,
+        latitude: true,
+        longitude: true,
+        about: true,
+        profileImage: true,
+        rate: true,
+        specialties: true,
+        averageRating: true,
+        reviewCount: true,
+        skillLevel: true,
+        learningMode: true,
+        ageGroup: true,
+        availability: true,
+        goals: true,
+        weeklyGoal: true,
+        pushNotificationsEnabled: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
     if (!user) return res.status(404).json({ message: "User not found." });
 
@@ -53,43 +78,77 @@ router.get("/me", authMiddleware, async (req, res) => {
   }
 });
 
-/* -----------------------------------------------------
-   UPDATE CURRENT LOGGED-IN USER  (Profile Setup)
------------------------------------------------------ */
+/**
+ * PUT /api/users/me
+ * Update current logged-in user profile
+ */
 router.put("/me", authMiddleware, async (req, res) => {
   try {
     const updates = {};
 
-    // shared
+    // Shared fields
     if (req.body.name !== undefined) updates.name = req.body.name;
     if (req.body.instruments !== undefined) updates.instruments = req.body.instruments;
     if (req.body.location !== undefined) updates.location = req.body.location;
+    if (req.body.city !== undefined) updates.city = req.body.city;
+    if (req.body.state !== undefined) updates.state = req.body.state;
+    if (req.body.country !== undefined) updates.country = req.body.country;
+    if (req.body.latitude !== undefined) updates.latitude = req.body.latitude;
+    if (req.body.longitude !== undefined) updates.longitude = req.body.longitude;
     if (req.body.profileImage !== undefined) updates.profileImage = req.body.profileImage;
 
-    // student fields
+    // Student fields
     if (req.body.weeklyGoal !== undefined) updates.weeklyGoal = req.body.weeklyGoal;
-
-    // teacher fields
-    if (req.body.experience !== undefined) updates.experience = req.body.experience;
-    if (req.body.rate !== undefined) updates.rate = req.body.rate;
-    if (req.body.about !== undefined) updates.about = req.body.about;
-    if (req.body.specialties !== undefined) updates.specialties = req.body.specialties;
-
-    // student fields
     if (req.body.skillLevel !== undefined) updates.skillLevel = req.body.skillLevel;
     if (req.body.learningMode !== undefined) updates.learningMode = req.body.learningMode;
     if (req.body.ageGroup !== undefined) updates.ageGroup = req.body.ageGroup;
     if (req.body.availability !== undefined) updates.availability = req.body.availability;
     if (req.body.goals !== undefined) updates.goals = req.body.goals;
 
-    // notification preferences
-    if (req.body.pushNotificationsEnabled !== undefined) updates.pushNotificationsEnabled = req.body.pushNotificationsEnabled;
+    // Teacher fields
+    if (req.body.experience !== undefined) updates.experience = req.body.experience;
+    if (req.body.rate !== undefined) updates.rate = req.body.rate;
+    if (req.body.about !== undefined) updates.about = req.body.about;
+    if (req.body.specialties !== undefined) updates.specialties = req.body.specialties;
 
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { $set: updates },
-      { new: true }
-    ).select("-password");
+    // Notification preferences
+    if (req.body.pushNotificationsEnabled !== undefined) {
+      updates.pushNotificationsEnabled = req.body.pushNotificationsEnabled;
+    }
+
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updates,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        instruments: true,
+        experience: true,
+        location: true,
+        city: true,
+        state: true,
+        country: true,
+        latitude: true,
+        longitude: true,
+        about: true,
+        profileImage: true,
+        rate: true,
+        specialties: true,
+        averageRating: true,
+        reviewCount: true,
+        skillLevel: true,
+        learningMode: true,
+        ageGroup: true,
+        availability: true,
+        goals: true,
+        weeklyGoal: true,
+        pushNotificationsEnabled: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
     res.json(user);
   } catch (err) {
@@ -97,9 +156,10 @@ router.put("/me", authMiddleware, async (req, res) => {
   }
 });
 
-/* -----------------------------------------------------
-   CHANGE PASSWORD (requires current password)
------------------------------------------------------ */
+/**
+ * PUT /api/users/me/change-password
+ * Change password (requires current password)
+ */
 router.put("/me/change-password", authMiddleware, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -108,7 +168,6 @@ router.put("/me/change-password", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Current password and new password are required." });
     }
 
-    // Trim passwords to remove whitespace
     const trimmedNewPassword = String(newPassword).trim();
     const trimmedCurrentPassword = String(currentPassword).trim();
 
@@ -117,13 +176,16 @@ router.put("/me/change-password", authMiddleware, async (req, res) => {
     }
 
     // Get user with password
-    const user = await User.findById(req.user.id);
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, password: true },
+    });
+
     if (!user) {
       return res.status(404).json({ message: "User not found." });
     }
 
     // Verify current password
-    const bcrypt = await import("bcryptjs");
     const isMatch = await bcrypt.compare(trimmedCurrentPassword, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: "Current password is incorrect." });
@@ -133,8 +195,10 @@ router.put("/me/change-password", authMiddleware, async (req, res) => {
     const hashedPassword = await bcrypt.hash(trimmedNewPassword, 10);
 
     // Update password
-    user.password = hashedPassword;
-    await user.save();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
 
     res.json({ message: "Password changed successfully." });
   } catch (err) {
@@ -142,12 +206,144 @@ router.put("/me/change-password", authMiddleware, async (req, res) => {
   }
 });
 
-/* -----------------------------------------------------
-   GET USER BY ID (for chat/contacts)
------------------------------------------------------ */
+/**
+ * GET /api/users/teachers
+ * Get all teachers (for student dashboard)
+ */
+router.get("/teachers", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const where = { role: "teacher" };
+
+    if (req.query.instrument) {
+      where.instruments = {
+        has: req.query.instrument,
+      };
+    }
+
+    if (req.query.city) {
+      where.city = {
+        contains: req.query.city,
+        mode: 'insensitive',
+      };
+    }
+
+    const [teachers, totalCount] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          instruments: true,
+          experience: true,
+          location: true,
+          city: true,
+          state: true,
+          country: true,
+          email: true,
+          createdAt: true,
+          rate: true,
+          about: true,
+          specialties: true,
+          profileImage: true,
+          averageRating: true,
+          reviewCount: true,
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+    const hasMore = page < totalPages;
+
+    res.json({
+      teachers,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages,
+        hasMore,
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching teachers:", err);
+    res.status(500).json({ message: err.message || "Server error fetching teachers." });
+  }
+});
+
+/**
+ * GET /api/users/teachers/:id
+ * Get a single teacher by ID
+ */
+router.get("/teachers/:id", async (req, res) => {
+  try {
+    const teacher = await prisma.user.findUnique({
+      where: {
+        id: req.params.id,
+        role: "teacher",
+      },
+      select: {
+        id: true,
+        name: true,
+        instruments: true,
+        experience: true,
+        location: true,
+        city: true,
+        state: true,
+        country: true,
+        email: true,
+        createdAt: true,
+        rate: true,
+        about: true,
+        specialties: true,
+        profileImage: true,
+        averageRating: true,
+        reviewCount: true,
+      },
+    });
+
+    if (!teacher) {
+      return res.status(404).json({ message: "Teacher not found." });
+    }
+
+    res.json(teacher);
+  } catch (err) {
+    console.error("Error fetching teacher by ID:", err);
+    res.status(500).json({ message: err.message || "Server error fetching teacher." });
+  }
+});
+
+/**
+ * GET /api/users/:id
+ * Get user by ID (for chat/contacts)
+ */
 router.get("/:id", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select("-password");
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        instruments: true,
+        location: true,
+        profileImage: true,
+        experience: true,
+        rate: true,
+        about: true,
+        specialties: true,
+        averageRating: true,
+        reviewCount: true,
+      },
+    });
 
     if (!user) return res.status(404).json({ message: "User not found." });
 
@@ -157,38 +353,20 @@ router.get("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-/* -----------------------------------------------------
-   DELETE USER (DEV ONLY)
------------------------------------------------------ */
-router.delete("/:id", async (req, res) => {
-  try {
-    const user = await User.findByIdAndDelete(req.params.id);
-
-    if (!user) return res.status(404).json({ message: "User not found." });
-
-    res.json({ message: "User deleted successfully." });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+/**
+ * GET /api/users/teacher-only
+ * Test route for teacher role
+ */
+router.get("/teacher-only", authMiddleware, roleMiddleware("teacher"), (req, res) => {
+  res.json({ message: "Welcome Teacher! You have special access." });
 });
 
-/* -----------------------------------------------------
-   ROLE-BASED TEST ROUTES
------------------------------------------------------ */
-router.get("/teacher-only",
-  authMiddleware,
-  roleMiddleware("teacher"),
-  (req, res) => {
-    res.json({ message: "Welcome Teacher! You have special access." });
-  }
-);
-
-router.get("/student-only",
-  authMiddleware,
-  roleMiddleware("student"),
-  (req, res) => {
-    res.json({ message: "Welcome Student! You have special access." });
-  }
-);
+/**
+ * GET /api/users/student-only
+ * Test route for student role
+ */
+router.get("/student-only", authMiddleware, roleMiddleware("student"), (req, res) => {
+  res.json({ message: "Welcome Student! You have special access." });
+});
 
 export default router;

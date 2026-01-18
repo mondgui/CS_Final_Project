@@ -1,7 +1,6 @@
-// backend/routes/resourceRoutes.js
+// backend/routes/resourceRoutes.js - Converted to use Prisma
 import express from "express";
-import Resource from "../models/Resource.js";
-import ResourceAssignment from "../models/ResourceAssignment.js";
+import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import roleMiddleware from "../middleware/roleMiddleware.js";
 
@@ -10,26 +9,30 @@ const router = express.Router();
 /**
  * GET /api/resources
  * Get all resources (for students) or filtered resources
- * Query params: instrument, level, category
  */
 router.get("/", async (req, res) => {
   try {
-    console.log("[Resources] GET /api/resources - Query params:", req.query);
-    
     const { instrument, level, category } = req.query;
     
-    const filter = {};
-    if (instrument) filter.instrument = instrument;
-    if (level) filter.level = level;
-    if (category) filter.category = category;
+    const where = {};
+    if (instrument) where.instrument = instrument;
+    if (level) where.level = level;
+    if (category) where.category = category;
     
-    console.log("[Resources] Filter:", filter);
+    const resources = await prisma.resource.findMany({
+      where,
+      include: {
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
     
-    const resources = await Resource.find(filter)
-      .populate("uploadedBy", "name profileImage")
-      .sort({ createdAt: -1 }); // Newest first
-    
-    console.log("[Resources] Found", resources.length, "resources");
     res.json(resources);
   } catch (err) {
     console.error("[Resources] Error:", err);
@@ -47,9 +50,19 @@ router.get(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const resources = await Resource.find({ uploadedBy: req.user.id })
-        .populate("uploadedBy", "name profileImage")
-        .sort({ createdAt: -1 });
+      const resources = await prisma.resource.findMany({
+        where: { uploadedById: req.user.id },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
       
       res.json(resources);
     } catch (err) {
@@ -86,30 +99,35 @@ router.post(
         });
       }
 
-      // Must have either fileUrl or externalUrl
       if (!fileUrl && !externalUrl) {
         return res.status(400).json({
           message: "Either fileUrl or externalUrl must be provided.",
         });
       }
 
-      const resource = new Resource({
-        title,
-        description: description || "",
-        fileUrl: fileUrl || "",
-        externalUrl: externalUrl || "",
-        fileType,
-        fileSize: fileSize || 0,
-        instrument,
-        level,
-        category: category || "",
-        uploadedBy: req.user.id,
+      const resource = await prisma.resource.create({
+        data: {
+          title,
+          description: description || "",
+          fileUrl: fileUrl || "",
+          externalUrl: externalUrl || "",
+          fileType,
+          fileSize: fileSize || 0,
+          instrument,
+          level,
+          category: category || "",
+          uploadedById: req.user.id,
+        },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+        },
       });
-
-      await resource.save();
-      
-      // Populate uploadedBy before sending response
-      await resource.populate("uploadedBy", "name profileImage");
       
       res.status(201).json(resource);
     } catch (err) {
@@ -120,7 +138,7 @@ router.post(
 
 /**
  * PUT /api/resources/:id
- * TEACHER: Update a resource (only the owner can update)
+ * TEACHER: Update a resource
  */
 router.put(
   "/:id",
@@ -128,14 +146,15 @@ router.put(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const resource = await Resource.findById(req.params.id);
+      const resource = await prisma.resource.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!resource) {
         return res.status(404).json({ message: "Resource not found." });
       }
 
-      // Only the owner can update
-      if (resource.uploadedBy.toString() !== req.user.id) {
+      if (resource.uploadedById !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
@@ -151,21 +170,32 @@ router.put(
         category,
       } = req.body;
 
-      if (title) resource.title = title;
-      if (description !== undefined) resource.description = description;
-      if (fileUrl !== undefined) resource.fileUrl = fileUrl;
-      if (externalUrl !== undefined) resource.externalUrl = externalUrl;
-      if (fileType) resource.fileType = fileType;
-      if (fileSize !== undefined) resource.fileSize = fileSize;
-      if (instrument) resource.instrument = instrument;
-      if (level) resource.level = level;
-      if (category !== undefined) resource.category = category;
+      const updateData = {};
+      if (title) updateData.title = title;
+      if (description !== undefined) updateData.description = description;
+      if (fileUrl !== undefined) updateData.fileUrl = fileUrl;
+      if (externalUrl !== undefined) updateData.externalUrl = externalUrl;
+      if (fileType) updateData.fileType = fileType;
+      if (fileSize !== undefined) updateData.fileSize = fileSize;
+      if (instrument) updateData.instrument = instrument;
+      if (level) updateData.level = level;
+      if (category !== undefined) updateData.category = category;
 
-      await resource.save();
+      const updatedResource = await prisma.resource.update({
+        where: { id: req.params.id },
+        data: updateData,
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
       
-      await resource.populate("uploadedBy", "name profileImage");
-      
-      res.json(resource);
+      res.json(updatedResource);
     } catch (err) {
       res.status(500).json({ message: err.message });
     }
@@ -174,7 +204,7 @@ router.put(
 
 /**
  * DELETE /api/resources/:id
- * TEACHER: Delete a resource (only the owner can delete)
+ * TEACHER: Delete a resource
  */
 router.delete(
   "/:id",
@@ -182,18 +212,21 @@ router.delete(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const resource = await Resource.findById(req.params.id);
+      const resource = await prisma.resource.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!resource) {
         return res.status(404).json({ message: "Resource not found." });
       }
 
-      // Only the owner can delete
-      if (resource.uploadedBy.toString() !== req.user.id) {
+      if (resource.uploadedById !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      await resource.deleteOne();
+      await prisma.resource.delete({
+        where: { id: req.params.id },
+      });
 
       res.json({ message: "Resource deleted successfully." });
     } catch (err) {
@@ -212,7 +245,7 @@ router.post(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const { studentIds, notes } = req.body; // studentIds: Array of student IDs, notes: Object mapping studentId to note
+      const { studentIds, notes } = req.body;
 
       if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
         return res.status(400).json({
@@ -220,50 +253,84 @@ router.post(
         });
       }
 
-      const resource = await Resource.findById(req.params.id);
+      const resource = await prisma.resource.findUnique({
+        where: { id: req.params.id },
+        include: { assignedTo: true },
+      });
 
       if (!resource) {
         return res.status(404).json({ message: "Resource not found." });
       }
 
-      // Only the owner can assign
-      if (resource.uploadedBy.toString() !== req.user.id) {
+      if (resource.uploadedById !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      // Add students to assignedTo (avoid duplicates)
-      const existingIds = resource.assignedTo.map((id) => id.toString());
-      const newIds = studentIds.filter((id) => !existingIds.includes(id.toString()));
-      
+      // Get existing assigned student IDs
+      const existingIds = resource.assignedTo.map(u => u.id);
+      const newIds = studentIds.filter(id => !existingIds.includes(id));
+
+      // Connect new students to the resource (many-to-many)
       if (newIds.length > 0) {
-        resource.assignedTo.push(...newIds);
-        await resource.save();
+        await prisma.resource.update({
+          where: { id: req.params.id },
+          data: {
+            assignedTo: {
+              connect: newIds.map(id => ({ id })),
+            },
+          },
+        });
       }
 
       // Create or update ResourceAssignment records with notes
       const assignmentPromises = studentIds.map(async (studentId) => {
         const note = notes && notes[studentId] ? notes[studentId] : "";
         
-        // Use findOneAndUpdate with upsert to create or update
-        return ResourceAssignment.findOneAndUpdate(
-          { resource: req.params.id, student: studentId },
-          {
-            resource: req.params.id,
-            student: studentId,
-            teacher: req.user.id,
-            note: note,
+        return prisma.resourceAssignment.upsert({
+          where: {
+            resourceId_studentId: {
+              resourceId: req.params.id,
+              studentId,
+            },
           },
-          { upsert: true, new: true }
-        );
+          update: {
+            note,
+            teacherId: req.user.id,
+          },
+          create: {
+            resourceId: req.params.id,
+            studentId,
+            teacherId: req.user.id,
+            note,
+          },
+        });
       });
 
       await Promise.all(assignmentPromises);
 
-      await resource.populate("uploadedBy", "name profileImage");
-      await resource.populate("assignedTo", "name email");
+      const updatedResource = await prisma.resource.findUnique({
+        where: { id: req.params.id },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
 
-      res.json(resource);
+      res.json(updatedResource);
     } catch (err) {
+      console.error("[Resources] Assignment error:", err);
       res.status(500).json({ message: err.message });
     }
   }
@@ -279,33 +346,57 @@ router.delete(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const resource = await Resource.findById(req.params.id);
+      const resource = await prisma.resource.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!resource) {
         return res.status(404).json({ message: "Resource not found." });
       }
 
-      // Only the owner can unassign
-      if (resource.uploadedBy.toString() !== req.user.id) {
+      if (resource.uploadedById !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      resource.assignedTo = resource.assignedTo.filter(
-        (id) => id.toString() !== req.params.studentId
-      );
-
-      await resource.save();
-
-      // Also delete the ResourceAssignment record
-      await ResourceAssignment.findOneAndDelete({
-        resource: req.params.id,
-        student: req.params.studentId,
+      // Disconnect student from resource
+      await prisma.resource.update({
+        where: { id: req.params.id },
+        data: {
+          assignedTo: {
+            disconnect: { id: req.params.studentId },
+          },
+        },
       });
 
-      await resource.populate("uploadedBy", "name profileImage");
-      await resource.populate("assignedTo", "name email");
+      // Delete the ResourceAssignment record
+      await prisma.resourceAssignment.deleteMany({
+        where: {
+          resourceId: req.params.id,
+          studentId: req.params.studentId,
+        },
+      });
 
-      res.json(resource);
+      const updatedResource = await prisma.resource.findUnique({
+        where: { id: req.params.id },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      res.json(updatedResource);
     } catch (err) {
       res.status(500).json({ message: err.message });
     }
@@ -322,26 +413,51 @@ router.get(
   roleMiddleware("student"),
   async (req, res) => {
     try {
-      const resources = await Resource.find({
-        assignedTo: req.user.id,
-      })
-        .populate("uploadedBy", "name profileImage")
-        .sort({ createdAt: -1 });
+      const resources = await prisma.resource.findMany({
+        where: {
+          assignedTo: {
+            some: { id: req.user.id },
+          },
+        },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
 
       // Get assignment notes for each resource
       const resourcesWithNotes = await Promise.all(
         resources.map(async (resource) => {
-          const assignment = await ResourceAssignment.findOne({
-            resource: resource._id,
-            student: req.user.id,
-          }).populate("teacher", "name profileImage");
+          const assignment = await prisma.resourceAssignment.findUnique({
+            where: {
+              resourceId_studentId: {
+                resourceId: resource.id,
+                studentId: req.user.id,
+              },
+            },
+            include: {
+              teacher: {
+                select: {
+                  id: true,
+                  name: true,
+                  profileImage: true,
+                },
+              },
+            },
+          });
 
-          const resourceObj = resource.toObject();
-          resourceObj.assignmentNote = assignment ? assignment.note : "";
-          resourceObj.assignmentTeacher = assignment ? assignment.teacher : null;
-          resourceObj.assignmentUpdatedAt = assignment ? assignment.updatedAt : null;
-
-          return resourceObj;
+          return {
+            ...resource,
+            assignmentNote: assignment ? assignment.note : "",
+            assignmentTeacher: assignment ? assignment.teacher : null,
+            assignmentUpdatedAt: assignment ? assignment.updatedAt : null,
+          };
         })
       );
 
@@ -362,33 +478,59 @@ router.get(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const resources = await Resource.find({
-        uploadedBy: req.user.id,
-        assignedTo: { $exists: true, $ne: [] }, // Has at least one assignment
-      })
-        .populate("uploadedBy", "name profileImage")
-        .populate("assignedTo", "name email profileImage")
-        .sort({ createdAt: -1 });
+      // Get resources with assignments
+      const assignments = await prisma.resourceAssignment.findMany({
+        where: { teacherId: req.user.id },
+        include: {
+          resource: {
+            include: {
+              uploadedBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  profileImage: true,
+                },
+              },
+              assignedTo: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  profileImage: true,
+                },
+              },
+            },
+          },
+          student: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
 
-      // Get assignment notes for each resource-student pair
-      const resourcesWithNotes = await Promise.all(
-        resources.map(async (resource) => {
-          const assignments = await ResourceAssignment.find({
-            resource: resource._id,
-            teacher: req.user.id,
-          }).populate("student", "name email profileImage");
+      // Group by resource
+      const resourceMap = new Map();
+      assignments.forEach((assignment) => {
+        const resourceId = assignment.resourceId;
+        if (!resourceMap.has(resourceId)) {
+          resourceMap.set(resourceId, {
+            ...assignment.resource,
+            assignments: [],
+          });
+        }
+        resourceMap.get(resourceId).assignments.push({
+          student: assignment.student,
+          note: assignment.note,
+          updatedAt: assignment.updatedAt,
+          createdAt: assignment.createdAt,
+        });
+      });
 
-          const resourceObj = resource.toObject();
-          resourceObj.assignments = assignments.map((assignment) => ({
-            student: assignment.student,
-            note: assignment.note,
-            updatedAt: assignment.updatedAt,
-            createdAt: assignment.createdAt,
-          }));
-
-          return resourceObj;
-        })
-      );
+      const resourcesWithNotes = Array.from(resourceMap.values());
 
       res.json(resourcesWithNotes);
     } catch (err) {
@@ -409,22 +551,45 @@ router.put(
     try {
       const { note } = req.body;
 
-      const resource = await Resource.findById(req.params.id);
+      const resource = await prisma.resource.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!resource) {
         return res.status(404).json({ message: "Resource not found." });
       }
 
-      // Only the owner can update notes
-      if (resource.uploadedBy.toString() !== req.user.id) {
+      if (resource.uploadedById !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      const assignment = await ResourceAssignment.findOneAndUpdate(
-        { resource: req.params.id, student: req.params.studentId, teacher: req.user.id },
-        { note: note || "" },
-        { new: true, upsert: true }
-      ).populate("student", "name email profileImage");
+      const assignment = await prisma.resourceAssignment.upsert({
+        where: {
+          resourceId_studentId: {
+            resourceId: req.params.id,
+            studentId: req.params.studentId,
+          },
+        },
+        update: {
+          note: note || "",
+        },
+        create: {
+          resourceId: req.params.id,
+          studentId: req.params.studentId,
+          teacherId: req.user.id,
+          note: note || "",
+        },
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
 
       res.json(assignment);
     } catch (err) {
@@ -435,7 +600,7 @@ router.put(
 
 /**
  * DELETE /api/resources/:id/assign/:studentId/note
- * TEACHER: Delete the note for a specific assignment (but keep the assignment)
+ * TEACHER: Delete the note for a specific assignment
  */
 router.delete(
   "/:id/assign/:studentId/note",
@@ -443,22 +608,29 @@ router.delete(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const resource = await Resource.findById(req.params.id);
+      const resource = await prisma.resource.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!resource) {
         return res.status(404).json({ message: "Resource not found." });
       }
 
-      // Only the owner can delete notes
-      if (resource.uploadedBy.toString() !== req.user.id) {
+      if (resource.uploadedById !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      const assignment = await ResourceAssignment.findOneAndUpdate(
-        { resource: req.params.id, student: req.params.studentId, teacher: req.user.id },
-        { note: "" },
-        { new: true }
-      );
+      const assignment = await prisma.resourceAssignment.update({
+        where: {
+          resourceId_studentId: {
+            resourceId: req.params.id,
+            studentId: req.params.studentId,
+          },
+        },
+        data: {
+          note: "",
+        },
+      });
 
       if (!assignment) {
         return res.status(404).json({ message: "Assignment not found." });
@@ -499,28 +671,35 @@ router.post(
         });
       }
 
-      // Must have either fileUrl or externalUrl
       if (!fileUrl && !externalUrl) {
         return res.status(400).json({
           message: "Either fileUrl or externalUrl must be provided.",
         });
       }
 
-      const resource = new Resource({
-        title,
-        description: description || "",
-        fileUrl: fileUrl || "",
-        externalUrl: externalUrl || "",
-        fileType,
-        fileSize: fileSize || 0,
-        instrument: instrument || "Other",
-        level: level || "Beginner",
-        category: category || "",
-        uploadedBy: req.user.id,
+      const resource = await prisma.resource.create({
+        data: {
+          title,
+          description: description || "",
+          fileUrl: fileUrl || "",
+          externalUrl: externalUrl || "",
+          fileType,
+          fileSize: fileSize || 0,
+          instrument: instrument || "Other",
+          level: level || "Beginner",
+          category: category || "",
+          uploadedById: req.user.id,
+        },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+        },
       });
-
-      await resource.save();
-      await resource.populate("uploadedBy", "name profileImage");
 
       res.status(201).json(resource);
     } catch (err) {
@@ -539,9 +718,19 @@ router.get(
   roleMiddleware("student"),
   async (req, res) => {
     try {
-      const resources = await Resource.find({ uploadedBy: req.user.id })
-        .populate("uploadedBy", "name profileImage")
-        .sort({ createdAt: -1 });
+      const resources = await prisma.resource.findMany({
+        where: { uploadedById: req.user.id },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
 
       res.json(resources);
     } catch (err) {
@@ -560,18 +749,21 @@ router.delete(
   roleMiddleware("student"),
   async (req, res) => {
     try {
-      const resource = await Resource.findById(req.params.id);
+      const resource = await prisma.resource.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!resource) {
         return res.status(404).json({ message: "Resource not found." });
       }
 
-      // Only the owner can delete
-      if (resource.uploadedBy.toString() !== req.user.id) {
+      if (resource.uploadedById !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      await resource.deleteOne();
+      await prisma.resource.delete({
+        where: { id: req.params.id },
+      });
 
       res.json({ message: "File deleted successfully." });
     } catch (err) {
@@ -581,4 +773,3 @@ router.delete(
 );
 
 export default router;
-

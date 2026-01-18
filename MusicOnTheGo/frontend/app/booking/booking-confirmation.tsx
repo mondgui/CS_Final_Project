@@ -112,7 +112,7 @@ export default function BookingConfirmationScreen() {
   useEffect(() => {
     const fetchTeacher = async () => {
       try {
-        const data = await api(`/api/teachers/${teacherId}`, {
+        const data = await api(`/api/users/teachers/${teacherId}`, {
           method: "GET",
           auth: true,
         });
@@ -198,7 +198,7 @@ export default function BookingConfirmationScreen() {
       return;
     }
 
-    const teacherIdValue = teacher._id || teacherId;
+    const teacherIdValue = teacher?.id || teacher?._id || teacherId;
     if (!teacherIdValue) {
       Alert.alert("Error", "Teacher ID is missing");
       return;

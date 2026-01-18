@@ -22,7 +22,8 @@ import { initSocket, getSocket } from "../../../lib/socket";
 import type { Socket } from "socket.io-client";
 
 type Teacher = {
-  _id: string;
+  id: string;
+  _id?: string; // Support legacy format during transition
   name: string;
   email: string;
   instruments: string[];
@@ -37,10 +38,12 @@ type Teacher = {
 };
 
 type Review = {
-  _id: string;
+  id: string;
+  _id?: string; // Support legacy format during transition
   teacher: string;
   student: {
-    _id: string;
+    id: string;
+    _id?: string; // Support legacy format during transition
     name: string;
     profileImage?: string;
   };
@@ -98,7 +101,7 @@ export default function TeacherProfileScreen() {
       const bookings = await api("/api/bookings/student/me", { auth: true });
       const bookingsArray = bookings?.bookings || bookings || [];
       const hasBookingWithTeacher = bookingsArray.some((booking: any) => {
-        const bookingTeacherId = booking.teacher?._id || booking.teacher;
+        const bookingTeacherId = booking.teacher?.id || booking.teacher?._id || booking.teacher;
         return String(bookingTeacherId) === String(teacherId) && booking.status === "approved";
       });
       setHasBooking(hasBookingWithTeacher);
@@ -144,7 +147,7 @@ export default function TeacherProfileScreen() {
   const fetchTeacher = useCallback(async () => {
     if (!teacherId) return;
     try {
-      const data = await api(`/api/teachers/${teacherId}`);
+      const data = await api(`/api/users/teachers/${teacherId}`);
       setTeacher(data);
     } catch (err: any) {
       console.log("Teacher fetch error:", err.message);
@@ -283,39 +286,59 @@ export default function TeacherProfileScreen() {
 
   // Initialize Socket.io for real-time availability updates
   useEffect(() => {
+    if (!teacherId) return;
+
     let mounted = true;
     let socketInstance: Socket | null = null;
+    let connectHandler: (() => void) | null = null;
 
     async function setupSocket() {
       try {
         socketInstance = await initSocket();
-        if (socketInstance && mounted && teacherId) {
+        if (!socketInstance || !mounted || !teacherId) return;
 
-          // Join this teacher's availability room so we get real-time updates
-          socketInstance.emit("join-teacher-availability", teacherId);
+        const availabilityUpdatedHandler = () => {
+          if (mounted) {
+            fetchAvailability();
+          }
+        };
 
-          // Listen for availability updates
-          socketInstance.on("availability-updated", () => {
-            if (mounted) {
-              fetchAvailability();
-            }
-          });
+        const setupListeners = () => {
+          if (!socketInstance || !mounted || !teacherId) return;
+
+          socketInstance.removeAllListeners("availability-updated");
+          // Ensure teacherId is a string for room joining
+          const teacherIdStr = String(teacherId);
+          socketInstance.emit("join-availability-for-teacher", teacherIdStr);
+          socketInstance.on("availability-updated", availabilityUpdatedHandler);
+        };
+
+        // Set up listeners immediately if connected
+        if (socketInstance.connected) {
+          setupListeners();
+        } else {
+          // If not connected, wait for connection first
+          socketInstance.once("connect", setupListeners);
         }
+
+        // Set up on connect/reconnect to ensure listeners persist
+        connectHandler = setupListeners;
+        socketInstance.on("connect", connectHandler);
       } catch (error) {
         // Silent fail – availability will still refresh on focus
       }
     }
 
-    if (teacherId) {
-      setupSocket();
-    }
+    setupSocket();
 
     return () => {
       mounted = false;
       if (socketInstance && teacherId) {
-        // Leave this teacher's availability room when unmounting
-        socketInstance.emit("leave-teacher-availability", teacherId);
-        socketInstance.off("availability-updated");
+        if (connectHandler) {
+          socketInstance.off("connect", connectHandler);
+        }
+        socketInstance.emit("leave-availability-for-teacher", String(teacherId));
+        socketInstance.removeAllListeners("availability-updated");
       }
     };
   }, [teacherId, fetchAvailability]);
@@ -345,7 +368,7 @@ export default function TeacherProfileScreen() {
   }
 
   const handleBookLesson = (slot?: AvailabilitySlot) => {
-    const params: any = { teacherId: teacher?._id };
+    const params: any = { teacherId: teacher?.id || teacher?._id };
     
     // If a specific slot was clicked, pass the day and time information
     if (slot) {
@@ -377,7 +400,7 @@ export default function TeacherProfileScreen() {
       router.push({
         pathname: "/chat/[id]",
         params: { 
-          id: teacher?._id,
+          id: teacher?.id || teacher?._id || "",
           contactName: teacher?.name || "Teacher",
           contactRole: "teacher"
         },
@@ -385,7 +408,7 @@ export default function TeacherProfileScreen() {
     } else {
       router.push({
         pathname: "/booking/contact-detail",
-        params: { teacherId: teacher?._id },
+        params: { teacherId: teacher?.id || teacher?._id },
       });
     }
   };
@@ -552,7 +575,7 @@ export default function TeacherProfileScreen() {
             ) : (
               <View style={styles.reviewsList}>
                 {reviews.map((review) => (
-                  <View key={review._id} style={styles.reviewItem}>
+                  <View key={review.id || review._id} style={styles.reviewItem}>
                     <View style={styles.reviewHeader}>
                       <Avatar
                         src={review.student?.profileImage}

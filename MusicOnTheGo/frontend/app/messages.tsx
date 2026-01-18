@@ -13,14 +13,13 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { useCallback } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { initSocket, getSocket } from "../lib/socket";
+import { getSupabaseClient } from "../lib/supabase";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import type { Socket } from "socket.io-client";
 
 type Contact = {
   id: string;
@@ -37,9 +36,11 @@ type Contact = {
 };
 
 type Inquiry = {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   student: {
-    _id: string;
+    id: string;
+    _id?: string; // Legacy support
     name: string;
     email: string;
   };
@@ -63,7 +64,6 @@ export default function MessagesScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
-  const [socket, setSocket] = useState<Socket | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
 
   // Load user with React Query
@@ -71,7 +71,7 @@ export default function MessagesScreen() {
     queryKey: ["messages-user"],
     queryFn: async () => {
       const userData = await api("/api/users/me", { auth: true });
-      currentUserIdRef.current = userData._id || userData.id;
+      currentUserIdRef.current = userData.id || userData._id;
       return userData;
     },
   });
@@ -160,8 +160,8 @@ export default function MessagesScreen() {
     const bookings = Array.isArray(bookingsData) ? bookingsData : [];
     bookings.forEach((booking: any) => {
       if (userRole === "teacher" && booking.student) {
-        const studentId = booking.student._id ? String(booking.student._id) : String(booking.student);
-        const student = booking.student._id ? booking.student : { _id: booking.student, name: "Student", email: "" };
+        const studentId = booking.student?.id || booking.student?._id ? String(booking.student.id || booking.student._id) : String(booking.student);
+        const student = booking.student?.id || booking.student?._id ? booking.student : { id: booking.student, _id: booking.student, name: "Student", email: "" };
         
         if (contactsMap.has(studentId)) {
           const existing = contactsMap.get(studentId)!;
@@ -184,8 +184,8 @@ export default function MessagesScreen() {
           });
         }
       } else if (userRole === "student" && booking.teacher) {
-        const teacherId = booking.teacher._id ? String(booking.teacher._id) : String(booking.teacher);
-        const teacher = booking.teacher._id ? booking.teacher : { _id: booking.teacher, name: "Teacher", email: "" };
+        const teacherId = booking.teacher?.id || booking.teacher?._id ? String(booking.teacher.id || booking.teacher._id) : String(booking.teacher);
+        const teacher = booking.teacher?.id || booking.teacher?._id ? booking.teacher : { id: booking.teacher, _id: booking.teacher, name: "Teacher", email: "" };
         
         if (contactsMap.has(teacherId)) {
           const existing = contactsMap.get(teacherId)!;
@@ -226,136 +226,99 @@ export default function MessagesScreen() {
     }
   };
 
-  // Initialize Socket.io connection for real-time updates
+  // Supabase Realtime: conversation list and unread count
   useEffect(() => {
+    if (!user?.id || !userRole) return;
+
     let mounted = true;
-    let socketInstance: Socket | null = null;
+    let channel: { unsubscribe: () => void } | null = null;
 
-    async function setupSocket() {
+    (async () => {
       try {
-        socketInstance = await initSocket();
-        if (socketInstance && mounted) {
-          setSocket(socketInstance);
+        const supabaseClient = await getSupabaseClient();
 
-          // Remove any existing listeners to avoid duplicates
-          socketInstance.removeAllListeners("message-notification");
-          socketInstance.removeAllListeners("new-message");
+        channel = supabaseClient
+          .channel("messages-list")
+          .on(
+            "postgres_changes",
+            { event: "INSERT", schema: "public", table: "Message" },
+            (payload) => {
+              if (!mounted) return;
+              const row = payload.new as any;
+              const currentUserId = currentUserIdRef.current || user?.id;
+              if (!currentUserId) return;
+              if (String(row.senderId) !== String(currentUserId) && String(row.recipientId) !== String(currentUserId)) return;
 
-          // Listen for message notifications (includes unread count)
-          socketInstance.on("message-notification", (data: any) => {
-            if (mounted && data && data.message) {
-              const message = data.message;
-              const senderId = message.sender?._id || message.sender || "";
-              const unreadCount = data.unreadCount || 0;
+              const otherUserId = String(row.senderId) === String(currentUserId) ? row.recipientId : row.senderId;
+              const isRecipient = String(row.recipientId) === String(currentUserId);
 
-              // Update the conversations cache in React Query
-              queryClient.setQueryData(
-                ["conversations", userRole],
-                (oldData: any) => {
-                  if (!oldData) return oldData;
+              queryClient.setQueryData(["conversations", userRole], (old: any) => {
+                if (!old) return old;
+                let found = false;
+                const next = {
+                  ...old,
+                  pages: old.pages.map((p: any) => ({
+                    ...p,
+                    conversations: p.conversations.map((c: any) => {
+                      if (String(c.userId) !== String(otherUserId)) return c;
+                      found = true;
+                      return {
+                        ...c,
+                        lastMessage: row.text ?? c.lastMessage,
+                        lastMessageTime: row.createdAt ?? c.lastMessageTime,
+                        unreadCount: isRecipient ? (c.unreadCount || 0) + 1 : (c.unreadCount || 0),
+                      };
+                    }),
+                  })),
+                };
+                if (!found) setTimeout(() => mounted && refetchContacts(), 300);
+                return next;
+              });
 
-                  return {
-                    ...oldData,
-                    pages: oldData.pages.map((page: any) => ({
-                      ...page,
-                      conversations: page.conversations.map((conv: any) => {
-                        if (conv.userId === senderId) {
-                          return {
-                            ...conv,
-                            lastMessage: message.text || conv.lastMessage,
-                            lastMessageTime: message.createdAt || conv.lastMessageTime,
-                            unreadCount: unreadCount,
-                          };
-                        }
-                        return conv;
-                      }),
-                    })),
-                  };
-                }
-              );
-
-              // If contact doesn't exist, refetch to get it
-              const currentData = queryClient.getQueryData(["conversations", userRole]) as any;
-              const allConversations = currentData?.pages?.flatMap((page: any) => page.conversations) || [];
-              const contactExists = allConversations.some((conv: any) => conv.userId === senderId);
-              
-              if (!contactExists) {
-                setTimeout(() => {
-                  if (mounted) refetchContacts();
-                }, 500);
+              if (isRecipient) {
+                queryClient.invalidateQueries({ queryKey: ["unread-messages-count"] });
               }
-
-              console.log("[Messages] Updated unread count for:", senderId, "unread:", unreadCount);
             }
-          });
+          )
+          .on(
+            "postgres_changes",
+            { event: "UPDATE", schema: "public", table: "Message" },
+            (payload) => {
+              if (!mounted) return;
+              const row = payload.new as any;
+              const currentUserId = currentUserIdRef.current || user?.id;
+              if (!currentUserId || String(row.recipientId) !== String(currentUserId) || !row.read) return;
 
-          // Also listen for new-message events (for both sender and recipient)
-          socketInstance.on("new-message", (newMessage: any) => {
-            if (mounted && newMessage) {
-              const senderId = newMessage.sender?._id || newMessage.sender || "";
-              const recipientId = newMessage.recipient?._id || newMessage.recipient || "";
-              const currentUserId = currentUserIdRef.current;
+              const otherUserId = row.senderId;
 
-              // Update the conversations cache in React Query
-              queryClient.setQueryData(
-                ["conversations", userRole],
-                (oldData: any) => {
-                  if (!oldData) return oldData;
-
-                  return {
-                    ...oldData,
-                    pages: oldData.pages.map((page: any) => ({
-                      ...page,
-                      conversations: page.conversations.map((conv: any) => {
-                        // Update recipient's conversation (if current user is the sender)
-                        if (senderId && currentUserId && String(senderId) === String(currentUserId) && recipientId && conv.userId === recipientId) {
-                          return {
-                            ...conv,
-                            lastMessage: newMessage.text || conv.lastMessage,
-                            lastMessageTime: newMessage.createdAt || conv.lastMessageTime,
-                            // Don't increment unread for messages you sent
-                          };
-                        }
-
-                        // Update sender's conversation (if current user is the recipient)
-                        if (senderId && currentUserId && String(senderId) !== String(currentUserId) && recipientId === currentUserId && conv.userId === senderId) {
-                          return {
-                            ...conv,
-                            lastMessage: newMessage.text || conv.lastMessage,
-                            lastMessageTime: newMessage.createdAt || conv.lastMessageTime,
-                            unreadCount: (conv.unreadCount || 0) + 1, // Increment unread count
-                          };
-                        }
-
-                        return conv;
-                      }),
-                    })),
-                  };
-                }
-              );
+              queryClient.setQueryData(["conversations", userRole], (old: any) => {
+                if (!old) return old;
+                return {
+                  ...old,
+                  pages: old.pages.map((p: any) => ({
+                    ...p,
+                    conversations: p.conversations.map((c: any) =>
+                      String(c.userId) === String(otherUserId)
+                        ? { ...c, unreadCount: Math.max(0, (c.unreadCount || 0) - 1) }
+                        : c
+                    ),
+                  })),
+                };
+              });
+              queryClient.invalidateQueries({ queryKey: ["unread-messages-count"] });
             }
-          });
-
-          socketInstance.on("error", (error: any) => {
-            console.error("[Messages] Socket error:", error);
-          });
-        }
-      } catch (error) {
-        console.error("[Messages] Failed to initialize socket:", error);
+          )
+          .subscribe();
+      } catch (e) {
+        if (mounted) console.error("[Messages] Supabase Realtime:", e);
       }
-    }
-
-    setupSocket();
+    })();
 
     return () => {
       mounted = false;
-      if (socketInstance) {
-        socketInstance.removeAllListeners("message-notification");
-        socketInstance.removeAllListeners("new-message");
-        socketInstance.removeAllListeners("error");
-      }
+      if (channel) channel.unsubscribe();
     };
-  }, []);
+  }, [user?.id, userRole, queryClient, refetchContacts]);
 
   // Refresh contacts when screen comes into focus
   useFocusEffect(
@@ -425,7 +388,7 @@ export default function MessagesScreen() {
     try {
       // Mark inquiry as "read" when teacher clicks to contact student
       if (inquiry.status === "sent") {
-        await api(`/api/inquiries/${inquiry._id}/read`, {
+        await api(`/api/inquiries/${inquiry.id || inquiry._id}/read`, {
           method: "PUT",
           auth: true,
         });
@@ -433,7 +396,7 @@ export default function MessagesScreen() {
         // Update local state immediately
         setInquiries((prev) =>
           prev.map((inq) =>
-            inq._id === inquiry._id ? { ...inq, status: "read" as const } : inq
+            (inq.id || inq._id) === (inquiry.id || inquiry._id) ? { ...inq, status: "read" as const } : inq
           )
         );
       }
@@ -444,7 +407,7 @@ export default function MessagesScreen() {
     router.push({
       pathname: "/chat/[id]",
       params: { 
-        id: inquiry.student._id,
+        id: inquiry.student.id || inquiry.student._id || "",
         contactName: inquiry.student.name,
         contactRole: "student",
         fromInquiry: "true",
@@ -730,7 +693,7 @@ function InquiriesTabContent({
   return (
     <ScrollView style={styles.inquiriesList} showsVerticalScrollIndicator={false}>
       {inquiries.map((inquiry) => (
-        <Card key={inquiry._id} style={styles.inquiryCard}>
+        <Card key={inquiry.id || inquiry._id} style={styles.inquiryCard}>
           <View style={styles.inquiryHeader}>
             <View style={styles.inquiryInfo}>
               <Text style={styles.studentName}>

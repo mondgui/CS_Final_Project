@@ -12,11 +12,12 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
-import { initSocket, getSocket, disconnectSocket } from "../../lib/socket";
+import { getSupabaseClient } from "../../lib/supabase";
 import { Avatar, AvatarImage, AvatarFallback } from "../../components/ui/avatar";
 import { Button } from "../../components/ui/button";
-import type { Socket } from "socket.io-client";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 type Message = {
   id: string;
@@ -31,6 +32,7 @@ type Message = {
 export default function ChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
   
   const contactId = params.id as string;
@@ -45,41 +47,42 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [contact, setContact] = useState<any>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [isTyping, setIsTyping] = useState(false);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
   // Function to load messages
   const loadMessages = useCallback(async () => {
     if (!contactId || !currentUserId) return;
 
     try {
-      // Load messages from backend
+      // Load messages from backend (this also marks messages as read)
       const messagesData = await api(`/api/messages/conversation/${contactId}`, { auth: true });
       const messagesList = Array.isArray(messagesData) ? messagesData : [];
       
       const formattedMessages: Message[] = messagesList.map((msg: any) => ({
-        id: msg._id,
+        id: msg.id || msg._id,
         text: msg.text,
-        senderId: msg.sender._id || msg.sender,
-        senderName: msg.sender.name || "Unknown",
-        senderImage: msg.sender.profileImage || "",
+        senderId: msg.sender?.id || msg.sender?._id || msg.sender,
+        senderName: msg.sender?.name || "Unknown",
+        senderImage: msg.sender?.profileImage || "",
         timestamp: new Date(msg.createdAt),
-        isOwn: String(msg.sender._id || msg.sender) === String(currentUserId),
+        isOwn: String(msg.sender?.id || msg.sender?._id || msg.sender) === String(currentUserId),
       }));
 
       setMessages(formattedMessages);
+      
+      // Invalidate unread count query since messages are now marked as read
+      queryClient.invalidateQueries({ queryKey: ["unread-messages-count"] });
     } catch (err) {
       console.log("Error loading messages:", err);
     }
-  }, [contactId, currentUserId, fromInquiry]);
+  }, [contactId, currentUserId, fromInquiry, queryClient]);
 
   // Load current user and contact info
   useEffect(() => {
     async function loadData() {
       try {
         const user = await api("/api/users/me", { auth: true });
-        setCurrentUserId(user._id || user.id);
+        setCurrentUserId(user.id || user._id);
 
         // Load contact info from API to get accurate role
         try {
@@ -90,7 +93,8 @@ export default function ChatScreen() {
           // Set contact with minimal info if API fails
           setContact({ 
             name: contactName, 
-            _id: contactId,
+            id: contactId,
+            _id: contactId, // Legacy support
             role: contactRole || "teacher", // Fallback to param
           });
         }
@@ -101,106 +105,115 @@ export default function ChatScreen() {
     loadData();
   }, [contactId, contactName, contactRole]);
 
-  // Use ref to always have latest currentUserId in socket handlers
-  const currentUserIdRef = useRef<string | null>(null);
+  // Set up Supabase Realtime subscription for messages
   useEffect(() => {
-    currentUserIdRef.current = currentUserId;
-  }, [currentUserId]);
+    if (!currentUserId || !contactId) return;
 
-  // Initialize Socket.io connection - reconnect when currentUserId changes
-  useEffect(() => {
     let mounted = true;
-    let socketInstance: Socket | null = null;
+    let channel: RealtimeChannel | null = null;
 
-    async function setupSocket() {
+    async function setupRealtime() {
       try {
-        // Reinitialize socket to ensure it uses the latest token
-        socketInstance = await initSocket();
-        if (socketInstance && mounted) {
-          setSocket(socketInstance);
+        const supabaseClient = await getSupabaseClient();
+        
+        // Create room ID (sorted user IDs for consistency)
+        const roomId = [currentUserId, contactId].sort().join('_');
 
-          // Remove any existing listeners to avoid duplicates
-          socketInstance.removeAllListeners("new-message");
-          socketInstance.removeAllListeners("user-typing");
-          socketInstance.removeAllListeners("error");
+        // Subscribe to message changes in this room
+        channel = supabaseClient
+          .channel(`messages:${roomId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*', // Listen to INSERT, UPDATE, DELETE
+              schema: 'public',
+              table: 'Message',
+              filter: `roomId=eq.${roomId}`, // Filter by room
+            },
+            (payload) => {
+              if (!mounted) return;
 
-          // Set up socket event listeners
-          socketInstance.on("new-message", (newMessage: any) => {
-            if (mounted && newMessage) {
-              // Use ref to get the latest currentUserId value
-              const latestCurrentUserId = currentUserIdRef.current;
-              
-              // Extract sender ID - handle both populated and non-populated cases
-              let senderId: string = "";
-              if (newMessage.sender) {
-                senderId = newMessage.sender._id || newMessage.sender.id || newMessage.sender || "";
+              if (payload.eventType === 'INSERT') {
+                const newMessage = payload.new as any;
+                
+                // Only process if message is for this conversation
+                const senderId = String(newMessage.senderId || "").trim();
+                const recipientId = String(newMessage.recipientId || "").trim();
+                const currentUserIdStr = String(currentUserId).trim();
+                const contactIdStr = String(contactId).trim();
+                
+                const isForThisConversation = 
+                  (senderId === contactIdStr && recipientId === currentUserIdStr) ||
+                  (recipientId === contactIdStr && senderId === currentUserIdStr);
+                
+                if (!isForThisConversation) return;
+
+                const isOwn = senderId === currentUserIdStr;
+                
+                const formattedMessage: Message = {
+                  id: newMessage.id,
+                  text: newMessage.text,
+                  senderId: senderId,
+                  senderName: contact?.name || "Unknown", // Will be updated when contact loads
+                  senderImage: contact?.profileImage || "",
+                  timestamp: new Date(newMessage.createdAt),
+                  isOwn: isOwn,
+                };
+
+                setMessages((prev) => {
+                  // Remove temp messages with matching text
+                  const withoutTemp = prev.filter((msg) => {
+                    if (msg.id.startsWith("temp-")) {
+                      return !(msg.text === formattedMessage.text && msg.isOwn === formattedMessage.isOwn);
+                    }
+                    return true;
+                  });
+                  
+                  // Check if message already exists
+                  const exists = withoutTemp.some((msg) => msg.id === formattedMessage.id);
+                  if (exists) return withoutTemp;
+                  
+                  return [...withoutTemp, formattedMessage];
+                });
+
+                // Auto-scroll to bottom
+                setTimeout(() => {
+                  flatListRef.current?.scrollToEnd({ animated: true });
+                }, 100);
+              } else if (payload.eventType === 'UPDATE') {
+                // Handle message updates (e.g., read status)
+                const updatedMessage = payload.new as any;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === updatedMessage.id
+                      ? {
+                          ...msg,
+                          // Update any changed fields
+                        }
+                      : msg
+                  )
+                );
               }
-              
-              // Compare IDs as strings to ensure consistent comparison
-              const isOwn = String(senderId).trim() === String(latestCurrentUserId).trim();
-              
-              const formattedMessage: Message = {
-                id: newMessage._id,
-                text: newMessage.text,
-                senderId: senderId,
-                senderName: newMessage.sender?.name || "Unknown",
-                senderImage: newMessage.sender?.profileImage || "",
-                timestamp: new Date(newMessage.createdAt),
-                isOwn: isOwn,
-              };
-
-              setMessages((prev) => {
-                // Check if message already exists (avoid duplicates)
-                const exists = prev.some((msg) => msg.id === formattedMessage.id);
-                if (exists) return prev;
-                return [...prev, formattedMessage];
-              });
-
-              // Auto-scroll to bottom
-              setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: true });
-              }, 100);
             }
-          });
+          )
+          .subscribe();
 
-          socketInstance.on("user-typing", (data: { userId: string; isTyping: boolean }) => {
-            if (mounted && data.userId === contactId) {
-              setIsTyping(data.isTyping);
-            }
-          });
-
-          socketInstance.on("error", (error: any) => {
-            // Socket error handled silently
-          });
-        }
+        realtimeChannelRef.current = channel;
       } catch (error) {
-        // Socket initialization error handled silently
+        console.error('[Chat] Supabase Realtime setup error:', error);
       }
     }
 
-    setupSocket();
+    setupRealtime();
 
     return () => {
       mounted = false;
-      // Clean up listeners when component unmounts or dependencies change
-      if (socketInstance) {
-        socketInstance.removeAllListeners("new-message");
-        socketInstance.removeAllListeners("user-typing");
-        socketInstance.removeAllListeners("error");
+      if (channel) {
+        channel.unsubscribe();
+        realtimeChannelRef.current = null;
       }
     };
-  }, [contactId, currentUserId]); // Reconnect when user changes
-
-  // Join chat room when socket and contactId are ready
-  useEffect(() => {
-    if (socket && contactId) {
-      socket.emit("join-chat", contactId);
-
-      return () => {
-        socket.emit("leave-chat", contactId);
-      };
-    }
-  }, [socket, contactId]);
+  }, [currentUserId, contactId, contact]);
 
   // Load messages when currentUserId is available
   useEffect(() => {
@@ -214,45 +227,32 @@ export default function ChatScreen() {
     useCallback(() => {
       if (currentUserId) {
         loadMessages();
+        queryClient.invalidateQueries({ queryKey: ["unread-messages-count"] });
       }
-    }, [currentUserId, loadMessages])
+    }, [currentUserId, loadMessages, queryClient])
   );
 
-  // Handle typing indicator
-  useEffect(() => {
-    if (!socket || !contactId) return;
+  // When leaving: mark this conversation as read, then refresh unread count
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (contactId) {
+          api(`/api/messages/conversation/${contactId}/mark-read`, { method: "POST", auth: true }).catch(() => {});
+        }
+        queryClient.invalidateQueries({ queryKey: ["unread-messages-count"] });
+      };
+    }, [queryClient, contactId])
+  );
 
-    if (message.trim()) {
-      socket.emit("typing", { recipientId: contactId, isTyping: true });
-
-      // Clear existing timeout
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-
-      // Stop typing after 2 seconds of no input
-      typingTimeoutRef.current = setTimeout(() => {
-        socket.emit("typing", { recipientId: contactId, isTyping: false });
-      }, 2000);
-    } else {
-      socket.emit("typing", { recipientId: contactId, isTyping: false });
-    }
-
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, [message, socket, contactId]);
+  // Typing indicator removed (was Socket.io; can be re-added with Supabase Presence later)
 
   const handleSend = async () => {
-    if (!message.trim() || !currentUserId || !socket) return;
+    if (!message.trim() || !currentUserId) return;
 
     const messageText = message.trim();
     setMessage(""); // Clear input immediately for better UX
 
-    // Stop typing indicator
-    socket.emit("typing", { recipientId: contactId, isTyping: false });
+      // Stop typing indicator (can be implemented with Supabase Presence later)
 
     // Optimistically add message to UI
     const tempMessage: Message = {
@@ -268,24 +268,58 @@ export default function ChatScreen() {
     setMessages((prev) => [...prev, tempMessage]);
 
     try {
-      // Send message via Socket.io (real-time)
-      socket.emit("send-message", {
-        recipientId: contactId,
-        text: messageText,
+      // Send message via HTTP API (backend will emit Socket.io event)
+      const sentMessage = await api("/api/messages", {
+        method: "POST",
+        auth: true,
+        body: JSON.stringify({
+          recipientId: contactId,
+          text: messageText,
+        }),
       });
 
-      // The message will be added via the "new-message" socket event
-      // Remove temp message after a short delay to allow real message to arrive
+      // The backend will create the message in PostgreSQL
+      // Supabase Realtime will automatically notify us via the subscription
+      // Fallback: If Realtime doesn't deliver within 1 second, replace temp with API response
       setTimeout(() => {
-        setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
-      }, 500);
-    } catch (err) {
+        setMessages((prev) => {
+          // Check if real message arrived via Realtime (by ID or matching text)
+          const realMessageExists = prev.some(
+            (msg) => 
+              (!msg.id.startsWith("temp-")) &&
+              (msg.id === sentMessage.id || msg.id === sentMessage._id || 
+               (msg.text === messageText && msg.isOwn))
+          );
+          
+          if (realMessageExists) {
+            // Real message arrived via Realtime, remove temp
+            return prev.filter((msg) => msg.id !== tempMessage.id);
+          } else {
+            // Real message didn't arrive via Realtime, use the API response
+            const formattedMessage: Message = {
+              id: sentMessage.id || sentMessage._id,
+              text: sentMessage.text,
+              senderId: sentMessage.sender?.id || sentMessage.sender?._id || sentMessage.sender || currentUserId,
+              senderName: sentMessage.sender?.name || "You",
+              senderImage: sentMessage.sender?.profileImage || "",
+              timestamp: new Date(sentMessage.createdAt),
+              isOwn: true,
+            };
+            
+            // Replace temp with real message
+            return prev.map((msg) => 
+              msg.id === tempMessage.id ? formattedMessage : msg
+            );
+          }
+        });
+      }, 1000); // Give Realtime 1 second to deliver
+    } catch (err: any) {
       console.log("Error sending message:", err);
       // Remove temp message on error
       setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
       // Restore message text
       setMessage(messageText);
-      alert("Failed to send message. Please try again.");
+      alert(err.message || "Failed to send message. Please try again.");
     }
   };
 
@@ -347,13 +381,6 @@ export default function ChatScreen() {
         </View>
       ) : (
         <>
-          {isTyping && (
-            <View style={styles.typingIndicator}>
-              <Text style={styles.typingText}>
-                {contactName} is typing...
-              </Text>
-            </View>
-          )}
           <FlatList
           ref={flatListRef}
           data={messages}

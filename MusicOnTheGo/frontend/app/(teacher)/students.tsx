@@ -16,7 +16,8 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 
 type Student = {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   name: string;
   email: string;
   profileImage?: string;
@@ -77,13 +78,12 @@ export default function StudentsScreen() {
       allBookings.forEach((booking: any) => {
         if (booking.student) {
           // Handle both populated student object and student ID string
-          const studentId = booking.student._id 
-            ? String(booking.student._id) 
+          const studentId = booking.student?.id || booking.student?._id
+            ? String(booking.student.id || booking.student._id) 
             : String(booking.student);
           
           // If student is just an ID string, skip (shouldn't happen if API populates correctly)
           if (typeof booking.student === "string") {
-            console.warn(`Student not populated for booking ${booking._id}`);
             return;
           }
           
@@ -96,17 +96,6 @@ export default function StudentsScreen() {
           // Add all bookings to track total lessons
           studentMap.get(studentId)!.bookings.push(booking);
         }
-      });
-      
-      // Filter to only show students with at least one approved or pending booking
-      const activeStudents = Array.from(studentMap.entries()).filter(([_, { bookings }]) => {
-        return bookings.some((b: any) => b.status === "approved" || b.status === "pending");
-      });
-      
-      // Update studentMap to only include active students
-      studentMap.clear();
-      activeStudents.forEach(([studentId, data]) => {
-        studentMap.set(studentId, data);
       });
 
       // Transform to student list with stats
@@ -122,11 +111,12 @@ export default function StudentsScreen() {
         // Get instrument from teacher or first booking
         const instrument = bookings[0]?.teacher?.instruments?.[0] || "Music";
 
-        // Ensure _id is a string
-        const studentId = student._id ? String(student._id) : String(student);
+        // Ensure id is a string
+        const studentId = student?.id || student?._id ? String(student.id || student._id) : String(student);
 
         return {
-          _id: studentId,
+          id: studentId,
+          _id: studentId, // Legacy support
           name: student.name || "Student",
           email: student.email || "",
           profileImage: student.profileImage,
@@ -195,7 +185,7 @@ export default function StudentsScreen() {
     router.push({
       pathname: "/(teacher)/student-portfolio",
       params: {
-        studentId: student._id,
+        studentId: student.id || student._id,
         studentName: student.name,
         instrument: student.instrument || "Music",
         image: student.profileImage || "",
@@ -239,7 +229,7 @@ export default function StudentsScreen() {
           <View style={styles.studentsList}>
             {students.map((student) => (
               <Card
-                key={student._id}
+                key={student.id || student._id}
                 style={styles.studentCard}
                 onPress={() => handleStudentPress(student)}
               >

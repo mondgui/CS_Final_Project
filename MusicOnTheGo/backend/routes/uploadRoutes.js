@@ -170,15 +170,6 @@ router.post('/resource-file', authMiddleware, (req, res, next) => {
       return res.status(400).json({ message: 'No file uploaded' });
     }
 
-    // Log file size in MB for debugging
-    const fileSizeMB = (req.file.size / (1024 * 1024)).toFixed(2);
-    console.log('[Upload] File received:', {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: `${fileSizeMB}MB`,
-      fieldname: req.file.fieldname,
-    });
-
     // Configure Cloudinary right before upload
     configureCloudinary();
     
@@ -201,8 +192,6 @@ router.post('/resource-file', authMiddleware, (req, res, next) => {
       fileType = 'video';
     }
 
-    console.log('[Upload] Detected file type:', fileType);
-
     // For large files (videos/audio), use stream upload instead of base64
     // Base64 encoding can cause memory issues for large files
     let result;
@@ -213,8 +202,6 @@ router.post('/resource-file', authMiddleware, (req, res, next) => {
         folder: 'resources',
         resource_type: 'video', // Cloudinary uses 'video' for both video and audio
       };
-
-      console.log('[Upload] Uploading video/audio to Cloudinary...');
       
       // Convert buffer to stream for upload_stream
       const bufferStream = new Readable();
@@ -252,11 +239,8 @@ router.post('/resource-file', authMiddleware, (req, res, next) => {
         ];
       }
 
-      console.log('[Upload] Uploading image/PDF to Cloudinary...');
       result = await cloudinary.uploader.upload(base64File, uploadOptions);
     }
-
-    console.log('[Upload] Upload successful:', result.secure_url);
 
     res.json({ 
       url: result.secure_url,

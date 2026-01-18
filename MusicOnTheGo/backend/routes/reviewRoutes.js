@@ -1,26 +1,24 @@
-// backend/routes/reviewRoutes.js
+// backend/routes/reviewRoutes.js - Converted to use Prisma
 import express from "express";
-import Review from "../models/Review.js";
-import User from "../models/User.js";
-import Booking from "../models/Booking.js";
+import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import roleMiddleware from "../middleware/roleMiddleware.js";
 
 const router = express.Router();
 
-// Debug: Test route to verify router is working
-router.get("/test", (req, res) => {
-  res.json({ message: "Review routes are working!", timestamp: new Date().toISOString() });
-});
-
 // Helper function to update teacher's average rating and review count
 async function updateTeacherRating(teacherId) {
-  const reviews = await Review.find({ teacher: teacherId });
+  const reviews = await prisma.review.findMany({
+    where: { teacherId },
+  });
   
   if (reviews.length === 0) {
-    await User.findByIdAndUpdate(teacherId, {
-      averageRating: null,
-      reviewCount: 0,
+    await prisma.user.update({
+      where: { id: teacherId },
+      data: {
+        averageRating: null,
+        reviewCount: 0,
+      },
     });
     return;
   }
@@ -29,23 +27,21 @@ async function updateTeacherRating(teacherId) {
   const averageRating = totalRating / reviews.length;
   const reviewCount = reviews.length;
 
-  await User.findByIdAndUpdate(teacherId, {
-    averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal place
-    reviewCount,
+  await prisma.user.update({
+    where: { id: teacherId },
+    data: {
+      averageRating: Math.round(averageRating * 10) / 10,
+      reviewCount,
+    },
   });
 }
 
 /**
+ * POST /api/reviews
  * STUDENT: Create or update a review for a teacher
- * Students can only review teachers they have bookings with
  */
 router.post("/", authMiddleware, roleMiddleware("student"), async (req, res) => {
   try {
-    console.log("[Reviews] POST /api/reviews - Received request:", {
-      body: req.body,
-      userId: req.user?.id,
-      userRole: req.user?.role,
-    });
     const { teacherId, rating, comment, bookingId } = req.body;
 
     if (!teacherId || !rating || rating < 1 || rating > 5) {
@@ -55,10 +51,12 @@ router.post("/", authMiddleware, roleMiddleware("student"), async (req, res) => 
     }
 
     // Verify that the student has at least one booking with this teacher
-    const booking = await Booking.findOne({
-      teacher: teacherId,
-      student: req.user.id,
-      status: "approved",
+    const booking = await prisma.booking.findFirst({
+      where: {
+        teacherId,
+        studentId: req.user.id,
+        status: "APPROVED",
+      },
     });
 
     if (!booking) {
@@ -68,74 +66,108 @@ router.post("/", authMiddleware, roleMiddleware("student"), async (req, res) => 
     }
 
     // Check if review already exists (to allow updates)
-    let review = await Review.findOne({
-      teacher: teacherId,
-      student: req.user.id,
+    let review = await prisma.review.findUnique({
+      where: {
+        teacherId_studentId: {
+          teacherId,
+          studentId: req.user.id,
+        },
+      },
     });
 
     let isNewReview = false;
 
     if (review) {
       // Update existing review
-      review.rating = rating;
-      review.comment = comment || "";
-      if (bookingId) review.booking = bookingId;
-      await review.save();
+      review = await prisma.review.update({
+        where: { id: review.id },
+        data: {
+          rating,
+          comment: comment || "",
+          bookingId: bookingId || booking.id,
+        },
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
     } else {
       // Create new review
       isNewReview = true;
-      review = await Review.create({
-        teacher: teacherId,
-        student: req.user.id,
-        rating,
-        comment: comment || "",
-        booking: bookingId || booking._id,
+      review = await prisma.review.create({
+        data: {
+          teacherId,
+          studentId: req.user.id,
+          rating,
+          comment: comment || "",
+          bookingId: bookingId || booking.id,
+        },
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+        },
       });
     }
 
     // Update teacher's average rating
     await updateTeacherRating(teacherId);
 
-    // Populate student info for response
-    await review.populate("student", "name profileImage");
-
     res.status(isNewReview ? 201 : 200).json(review);
   } catch (err) {
     console.error("[Reviews] Error in POST /api/reviews:", err);
-    if (err.code === 11000) {
-      return res.status(400).json({ message: "You have already reviewed this teacher." });
-    }
     res.status(500).json({ message: err.message });
   }
 });
 
 /**
+ * GET /api/reviews/teacher/:teacherId
  * Get all reviews for a specific teacher
  */
 router.get("/teacher/:teacherId", async (req, res) => {
   try {
     const { teacherId } = req.params;
-    const { page = 1, limit = 20 } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const skip = (pageNum - 1) * limitNum;
-
-    const reviews = await Review.find({ teacher: teacherId })
-      .populate("student", "name profileImage")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limitNum);
-
-    const totalCount = await Review.countDocuments({ teacher: teacherId });
+    const [reviews, totalCount] = await Promise.all([
+      prisma.review.findMany({
+        where: { teacherId },
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.review.count({
+        where: { teacherId },
+      }),
+    ]);
 
     res.json({
       reviews,
       pagination: {
-        page: pageNum,
-        limit: limitNum,
+        page,
+        limit,
         total: totalCount,
-        totalPages: Math.ceil(totalCount / limitNum),
+        totalPages: Math.ceil(totalCount / limit),
         hasMore: skip + reviews.length < totalCount,
       },
     });
@@ -145,16 +177,30 @@ router.get("/teacher/:teacherId", async (req, res) => {
 });
 
 /**
+ * GET /api/reviews/teacher/:teacherId/me
  * STUDENT: Get their own review for a specific teacher
  */
 router.get("/teacher/:teacherId/me", authMiddleware, roleMiddleware("student"), async (req, res) => {
   try {
     const { teacherId } = req.params;
 
-    const review = await Review.findOne({
-      teacher: teacherId,
-      student: req.user.id,
-    }).populate("student", "name profileImage");
+    const review = await prisma.review.findUnique({
+      where: {
+        teacherId_studentId: {
+          teacherId,
+          studentId: req.user.id,
+        },
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
 
     if (!review) {
       return res.status(404).json({ message: "Review not found." });
@@ -167,64 +213,83 @@ router.get("/teacher/:teacherId/me", authMiddleware, roleMiddleware("student"), 
 });
 
 /**
+ * PUT /api/reviews/:id
  * STUDENT: Update their own review
  */
 router.put("/:id", authMiddleware, roleMiddleware("student"), async (req, res) => {
   try {
     const { rating, comment } = req.body;
 
-    const review = await Review.findById(req.params.id);
+    const review = await prisma.review.findUnique({
+      where: { id: req.params.id },
+    });
 
     if (!review) {
       return res.status(404).json({ message: "Review not found." });
     }
 
-    if (review.student.toString() !== req.user.id) {
+    if (review.studentId !== req.user.id) {
       return res.status(403).json({ message: "Unauthorized." });
     }
 
+    const updateData = {};
     if (rating !== undefined) {
       if (rating < 1 || rating > 5) {
         return res.status(400).json({ message: "Rating must be between 1 and 5." });
       }
-      review.rating = rating;
+      updateData.rating = rating;
     }
 
     if (comment !== undefined) {
-      review.comment = comment;
+      updateData.comment = comment;
     }
 
-    await review.save();
+    const updatedReview = await prisma.review.update({
+      where: { id: req.params.id },
+      data: updateData,
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
 
     // Update teacher's average rating
-    await updateTeacherRating(review.teacher);
+    await updateTeacherRating(review.teacherId);
 
-    await review.populate("student", "name profileImage");
-
-    res.json(review);
+    res.json(updatedReview);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
 /**
+ * DELETE /api/reviews/:id
  * STUDENT: Delete their own review
  */
 router.delete("/:id", authMiddleware, roleMiddleware("student"), async (req, res) => {
   try {
-    const review = await Review.findById(req.params.id);
+    const review = await prisma.review.findUnique({
+      where: { id: req.params.id },
+    });
 
     if (!review) {
       return res.status(404).json({ message: "Review not found." });
     }
 
-    if (review.student.toString() !== req.user.id) {
+    if (review.studentId !== req.user.id) {
       return res.status(403).json({ message: "Unauthorized." });
     }
 
-    const teacherId = review.teacher;
+    const teacherId = review.teacherId;
 
-    await Review.findByIdAndDelete(req.params.id);
+    await prisma.review.delete({
+      where: { id: req.params.id },
+    });
 
     // Update teacher's average rating
     await updateTeacherRating(teacherId);

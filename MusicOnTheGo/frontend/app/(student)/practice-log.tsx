@@ -102,7 +102,8 @@ export default function PracticeLogScreen() {
       // Load practice sessions
       const sessions = await api("/api/practice/sessions/me", { auth: true });
       const transformedSessions = (Array.isArray(sessions) ? sessions : []).map((s: any) => ({
-        _id: s._id,
+        id: s.id || s._id,
+        _id: s.id || s._id, // Legacy support
         date: s.date || s.createdAt,
         startTime: s.startTime || s.date || s.createdAt,
         endTime: s.endTime,
@@ -117,7 +118,8 @@ export default function PracticeLogScreen() {
       // Load recordings
       const recordingsData = await api("/api/practice/recordings/me", { auth: true });
       const transformedRecordings = (Array.isArray(recordingsData) ? recordingsData : []).map((r: any) => ({
-        _id: r._id,
+        id: r.id || r._id,
+        _id: r.id || r._id, // Legacy support
         date: r.createdAt,
         title: r.title,
         duration: r.duration || "",

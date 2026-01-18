@@ -1,6 +1,6 @@
 // app/(student)/dashboard/index.tsx
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,12 +8,16 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { api } from "../../../lib/api";
+import { storage } from "../../../lib/storage";
+import { getSupabaseClient } from "../../../lib/supabase";
 
 import HomeTab from "./_tabs/HomeTab";
 import LessonsTab from "./_tabs/LessonsTab";
@@ -22,7 +26,8 @@ import SettingsTab from "./_tabs/SettingsTab";
 // ---------- TYPES ---------- //
 
 type Teacher = {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   name: string;
   email: string;
   instruments: string[];
@@ -66,6 +71,81 @@ export default function StudentDashboard() {
     },
   });
 
+  // Fetch unread message count
+  const { data: unreadCount, refetch: refetchUnreadCount } = useQuery({
+    queryKey: ["unread-messages-count"],
+    queryFn: async () => {
+      try {
+        const response = await api("/api/messages/unread-count", { auth: true });
+        return response?.count || 0;
+      } catch {
+        return 0;
+      }
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  // Refetch unread count when screen comes into focus (e.g., returning from chat)
+  useFocusEffect(
+    useCallback(() => {
+      refetchUnreadCount();
+    }, [refetchUnreadCount])
+  );
+
+  // Supabase Realtime: invalidate unread count on new message or mark-as-read
+  useEffect(() => {
+    if (!user?.id) return;
+    let mounted = true;
+    let channel: { unsubscribe: () => void } | null = null;
+
+    (async () => {
+      try {
+        const supabaseClient = await getSupabaseClient();
+        const currentUserId = user!.id;
+
+        channel = supabaseClient
+          .channel("student-unread")
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "Message" }, (payload) => {
+            if (!mounted) return;
+            const row = (payload.new as any);
+            if (String(row.recipientId) === String(currentUserId)) {
+              queryClient.invalidateQueries({ queryKey: ["unread-messages-count"] });
+            }
+          })
+          .on("postgres_changes", { event: "UPDATE", schema: "public", table: "Message" }, (payload) => {
+            if (!mounted) return;
+            const row = payload.new as any;
+            if (String(row.recipientId) === String(currentUserId) && row.read) {
+              queryClient.invalidateQueries({ queryKey: ["unread-messages-count"] });
+            }
+          })
+          .subscribe();
+      } catch (e) {
+        if (mounted) console.warn("[Student Dashboard] Supabase Realtime (unread):", e);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      if (channel) channel.unsubscribe();
+    };
+  }, [user?.id, queryClient]);
+
+  // Show welcome message on first login
+  useEffect(() => {
+    const showWelcomeMessage = async () => {
+      const hasSeenWelcome = await storage.getItem("student_welcome_seen");
+      if (!hasSeenWelcome) {
+        Alert.alert(
+          "Welcome! 👋",
+          "Teachers cannot contact you first. To connect with a teacher, visit their profile and send them an inquiry using the inquiry form.",
+          [{ text: "Got it!", onPress: () => storage.setItem("student_welcome_seen", "true") }]
+        );
+      }
+    };
+    showWelcomeMessage();
+  }, []);
+
   // Teachers query with infinite pagination
   const {
     data: teachersData,
@@ -82,19 +162,28 @@ export default function StudentDashboard() {
         limit: "20",
       };
 
-      const response = await api("/api/teachers", {
-        method: "GET",
-        params,
-      });
+      try {
+        const response = await api("/api/users/teachers", {
+          method: "GET",
+          params,
+        });
 
-      const teachersData = response.teachers || response || [];
-      const pagination = response.pagination;
+        const teachersData = response?.teachers || (Array.isArray(response) ? response : []);
+        const pagination = response?.pagination;
 
-      return {
-        teachers: Array.isArray(teachersData) ? teachersData : [],
-        pagination: pagination || { hasMore: teachersData.length >= 20 },
-        nextPage: pagination?.hasMore ? pageParam + 1 : undefined,
-      };
+        return {
+          teachers: Array.isArray(teachersData) ? teachersData : [],
+          pagination: pagination || { hasMore: (teachersData?.length || 0) >= 20 },
+          nextPage: pagination?.hasMore ? pageParam + 1 : undefined,
+        };
+      } catch (error: any) {
+        // Return empty array on error
+        return {
+          teachers: [],
+          pagination: { hasMore: false },
+          nextPage: undefined,
+        };
+      }
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
@@ -136,11 +225,12 @@ export default function StudentDashboard() {
     const teacherMap = new Map<string, Teacher>();
 
     allBookings.forEach((booking: any) => {
-      if (booking.teacher && booking.teacher._id) {
-        const teacherId = String(booking.teacher._id);
+      if (booking.teacher && (booking.teacher.id || booking.teacher._id)) {
+        const teacherId = String(booking.teacher.id || booking.teacher._id);
         if (!teacherMap.has(teacherId)) {
           teacherMap.set(teacherId, {
-            _id: teacherId,
+            id: teacherId,
+            _id: teacherId, // Legacy support
             name: booking.teacher.name || "Teacher",
             email: booking.teacher.email || "",
             instruments: booking.teacher.instruments || [],
@@ -232,6 +322,13 @@ export default function StudentDashboard() {
                 onPress={() => router.push("/messages")}
               >
                 <Ionicons name="chatbubbles-outline" size={24} color="white" />
+                {unreadCount !== undefined && unreadCount > 0 ? (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {unreadCount > 99 ? "99+" : String(unreadCount)}
+                    </Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
             </View>
           </View>
@@ -367,6 +464,26 @@ const styles = StyleSheet.create({
   headerIconButton: {
     padding: 8,
     borderRadius: 8,
+    position: "relative",
+  },
+  badge: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    backgroundColor: "#FF4444",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "white",
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "700",
   },
 
   contentWrapper: {

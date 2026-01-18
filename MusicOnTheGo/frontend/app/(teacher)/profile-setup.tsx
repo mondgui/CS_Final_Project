@@ -119,9 +119,7 @@ export default function ProfileSetup() {
             method: "POST",
             auth: true,
             body: formData,
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
+            // Don't set Content-Type - FormData sets it automatically with boundary
           });
 
           if (uploadResponse?.url) {

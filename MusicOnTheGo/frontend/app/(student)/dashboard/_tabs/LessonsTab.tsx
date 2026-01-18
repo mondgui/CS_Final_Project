@@ -20,9 +20,11 @@ import { useEffect } from "react";
 import type { Socket } from "socket.io-client";
 
 type BookingData = {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   teacher: {
-    _id: string;
+    id: string;
+    _id?: string; // Legacy support
     name: string;
     email: string;
     location?: string;
@@ -45,7 +47,7 @@ type TransformedBooking = {
   time: string;
   originalTimeSlot?: { start: string; end: string }; // Preserve original timeSlot for calendar
   location: string;
-  status: "Confirmed" | "Pending" | "Completed";
+  status: "Confirmed" | "Pending" | "Completed" | "Rejected";
   image?: string;
   email: string;
   phone?: string;
@@ -139,36 +141,42 @@ export default function LessonsTab() {
     return timeSlot.start ? formatTime24To12(timeSlot.start) : "";
   };
 
-  const transformBookings = (bookings: BookingData[]): TransformedBooking[] => {
+  const transformBookings = (bookings: any[]): TransformedBooking[] => {
     return bookings.map((booking) => {
+      // Backend returns startTime/endTime directly, not in timeSlot object
+      const timeSlot = booking.timeSlot || {
+        start: booking.startTime || "",
+        end: booking.endTime || "",
+      };
+      
       // Format date for display
-      const displayDate = formatDate(booking.day);
+      const displayDate = formatDate(booking.day || "");
       
       // Format time
-      const time = formatTimeSlot(booking.timeSlot);
+      const time = formatTimeSlot(timeSlot);
       
-      // Map status
-      const status =
-        booking.status === "approved"
-          ? "Confirmed"
-          : booking.status === "pending"
-          ? "Pending"
-          : "Completed";
+      // Map status: backend returns PENDING, APPROVED, REJECTED (uppercase)
+      const s = (booking.status || "").toUpperCase();
+      const status: "Confirmed" | "Pending" | "Completed" | "Rejected" =
+        s === "APPROVED" ? "Confirmed"
+        : s === "PENDING" ? "Pending"
+        : s === "REJECTED" ? "Rejected"
+        : "Pending";
       
-      // Get instrument from teacher - use first one if available
-      const instrument = booking.teacher.instruments?.[0] || null;
+      // Teacher: backend student/me only includes id, name, email, profileImage (no instruments/location)
+      const teacher = booking.teacher || {};
       
       return {
-        id: booking._id,
-        name: booking.teacher.name,
-        instrument: instrument,
+        id: booking.id || booking._id,
+        name: teacher.name || "Teacher",
+        instrument: teacher.instruments?.[0] || null,
         date: displayDate,
-        originalDate: booking.day, // Preserve original for comparison
+        originalDate: booking.day,
         time: time,
-        originalTimeSlot: booking.timeSlot, // Preserve original timeSlot for calendar
-        location: booking.teacher.location || "Location TBD",
+        originalTimeSlot: timeSlot,
+        location: teacher.location || "Location TBD",
         status: status,
-        email: booking.teacher.email,
+        email: teacher.email || "",
       };
     });
   };
@@ -223,62 +231,71 @@ export default function LessonsTab() {
   useEffect(() => {
     let mounted = true;
     let socketInstance: Socket | null = null;
+    let connectHandler: (() => void) | null = null;
 
     async function setupSocket() {
       try {
         socketInstance = await initSocket();
-        if (socketInstance && mounted) {
-          // Join student bookings room
+        if (!socketInstance || !mounted) return;
+
+        const bookingStatusChangedHandler = () => {
+          if (mounted) {
+            queryClient.invalidateQueries({ queryKey: ["student-bookings"] });
+            refetch();
+          }
+        };
+
+        const bookingUpdatedHandler = () => {
+          if (mounted) {
+            queryClient.invalidateQueries({ queryKey: ["student-bookings"] });
+            refetch();
+          }
+        };
+
+        const bookingCancelledHandler = () => {
+          if (mounted) {
+            queryClient.invalidateQueries({ queryKey: ["student-bookings"] });
+            refetch();
+          }
+        };
+
+        const bookingDeletedHandler = () => {
+          if (mounted) {
+            queryClient.invalidateQueries({ queryKey: ["student-bookings"] });
+            refetch();
+          }
+        };
+
+        const setupListeners = () => {
+          if (!socketInstance || !mounted) return;
+          
+          socketInstance.removeAllListeners("booking-status-changed");
+          socketInstance.removeAllListeners("booking-updated");
+          socketInstance.removeAllListeners("booking-cancelled");
+          socketInstance.removeAllListeners("booking-deleted");
+
           socketInstance.emit("join-student-bookings");
+          socketInstance.on("booking-status-changed", bookingStatusChangedHandler);
+          socketInstance.on("booking-updated", bookingUpdatedHandler);
+          socketInstance.on("booking-cancelled", bookingCancelledHandler);
+          socketInstance.on("booking-deleted", bookingDeletedHandler);
+        };
 
-          // Listen for booking status changes
-          socketInstance.on("booking-status-changed", () => {
-            if (mounted) {
-              if (__DEV__ && DEBUG_STUDENT_LESSONS) {
-                console.log("[Student Lessons] Booking status changed");
-              }
-              queryClient.invalidateQueries({ queryKey: ["student-bookings"] });
-              refetch();
-            }
-          });
+        // Set up listeners immediately if connected
+        if (socketInstance.connected) {
+          setupListeners();
+        }
 
-          // Listen for booking updates
-          socketInstance.on("booking-updated", () => {
-            if (mounted) {
-              if (__DEV__ && DEBUG_STUDENT_LESSONS) {
-                console.log("[Student Lessons] Booking updated");
-              }
-              queryClient.invalidateQueries({ queryKey: ["student-bookings"] });
-              refetch();
-            }
-          });
-
-          // Listen for booking cancellations (from booking-cancelled event sent to user room)
-          socketInstance.on("booking-cancelled", () => {
-            if (mounted) {
-              if (__DEV__ && DEBUG_STUDENT_LESSONS) {
-                console.log("[Student Lessons] Booking cancelled");
-              }
-              queryClient.invalidateQueries({ queryKey: ["student-bookings"] });
-              refetch();
-            }
-          });
-
-          // Listen for booking deletions (from booking-deleted event sent to student-bookings room)
-          socketInstance.on("booking-deleted", () => {
-            if (mounted) {
-              if (__DEV__ && DEBUG_STUDENT_LESSONS) {
-                console.log("[Student Lessons] Booking deleted");
-              }
-              queryClient.invalidateQueries({ queryKey: ["student-bookings"] });
-              refetch();
-            }
-          });
+        // Set up on connect/reconnect to ensure listeners persist
+        connectHandler = setupListeners;
+        socketInstance.on("connect", connectHandler);
+        
+        // Also use once to catch immediate connection
+        if (!socketInstance.connected) {
+          socketInstance.once("connect", setupListeners);
         }
       } catch (error) {
-        if (__DEV__ && DEBUG_STUDENT_LESSONS) {
-          console.log("[Student Lessons] Socket setup failed (non-critical):", error);
-        }
+        // Socket setup failed - non-critical, app can work without real-time updates
       }
     }
 
@@ -287,11 +304,13 @@ export default function LessonsTab() {
     return () => {
       mounted = false;
       if (socketInstance) {
-        socketInstance.emit("leave-student-bookings");
-        socketInstance.off("booking-status-changed");
-        socketInstance.off("booking-updated");
-        socketInstance.off("booking-cancelled");
-        socketInstance.off("booking-deleted");
+        if (connectHandler) {
+          socketInstance.off("connect", connectHandler);
+        }
+        socketInstance.removeAllListeners("booking-status-changed");
+        socketInstance.removeAllListeners("booking-updated");
+        socketInstance.removeAllListeners("booking-cancelled");
+        socketInstance.removeAllListeners("booking-deleted");
       }
     };
   }, [queryClient, refetch]);

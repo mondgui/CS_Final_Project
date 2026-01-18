@@ -1,50 +1,70 @@
-// backend/routes/teacherRoutes.js
+// backend/routes/teacherRoutes.js - Converted to use Prisma
 import express from "express";
-import User from "../models/User.js";
+import prisma from "../utils/prisma.js";
 
 const router = express.Router();
 
 /**
+ * GET /api/teachers
  * PUBLIC — Get all teachers
  */
 router.get("/", async (req, res) => {
   try {
-    const { page, limit } = req.query;
-    
-    // Pagination parameters
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 20;
-    const skip = (pageNum - 1) * limitNum;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-    const filter = { role: "teacher" };
+    const where = { role: "teacher" };
 
     if (req.query.instrument) {
-      filter.instruments = { $in: [req.query.instrument] };
+      where.instruments = {
+        has: req.query.instrument,
+      };
     }
 
     if (req.query.city) {
-      filter.location = new RegExp(req.query.city, "i");
+      where.city = {
+        contains: req.query.city,
+        mode: 'insensitive',
+      };
     }
 
-    // Get total count
-    const totalCount = await User.countDocuments(filter);
+    const [teachers, totalCount] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          instruments: true,
+          experience: true,
+          location: true,
+          city: true,
+          state: true,
+          country: true,
+          email: true,
+          createdAt: true,
+          rate: true,
+          about: true,
+          specialties: true,
+          profileImage: true,
+          averageRating: true,
+          reviewCount: true,
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.user.count({ where }),
+    ]);
 
-    // Fetch teachers with pagination
-    const teachers = await User.find(filter)
-      .select("name instruments experience location email createdAt rate about specialties profileImage averageRating reviewCount")
-      .skip(skip)
-      .limit(limitNum)
-      .sort({ createdAt: -1 }); // Most recent first
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(totalCount / limitNum);
-    const hasMore = pageNum < totalPages;
+    const totalPages = Math.ceil(totalCount / limit);
+    const hasMore = page < totalPages;
 
     res.json({
       teachers,
       pagination: {
-        page: pageNum,
-        limit: limitNum,
+        page,
+        limit,
         total: totalCount,
         totalPages,
         hasMore,
@@ -56,16 +76,35 @@ router.get("/", async (req, res) => {
 });
 
 /**
+ * GET /api/teachers/:id
  * PUBLIC — Get a single teacher by ID
  */
 router.get("/:id", async (req, res) => {
   try {
-    const teacher = await User.findOne({
-      _id: req.params.id,
-      role: "teacher",
-    }).select(
-      "name instruments experience location email createdAt rate about specialties profileImage averageRating reviewCount"
-    );
+    const teacher = await prisma.user.findFirst({
+      where: {
+        id: req.params.id,
+        role: "teacher",
+      },
+      select: {
+        id: true,
+        name: true,
+        instruments: true,
+        experience: true,
+        location: true,
+        city: true,
+        state: true,
+        country: true,
+        email: true,
+        createdAt: true,
+        rate: true,
+        about: true,
+        specialties: true,
+        profileImage: true,
+        averageRating: true,
+        reviewCount: true,
+      },
+    });
 
     if (!teacher) {
       return res.status(404).json({ message: "Teacher not found." });

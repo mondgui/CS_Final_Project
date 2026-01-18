@@ -17,7 +17,8 @@ import { Badge } from "../../../../components/ui/badge";
 import { Select, SelectItem } from "../../../../components/ui/select";
 
 type Teacher = {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   name: string;
   email: string;
   instruments: string[];
@@ -56,14 +57,15 @@ export default function HomeTab({
 
   // Get IDs of my teachers to filter them out from available teachers
   const myTeacherIds = useMemo(() => {
-    return new Set(myTeachers.map((t) => t._id));
+    return new Set(myTeachers.map((t) => t.id || t._id)); // Support both for transition
   }, [myTeachers]);
 
   // Filter teachers based on search and filters
   // Also exclude teachers that the student already has bookings with
   const filteredTeachers = teachers.filter((teacher) => {
     // Exclude teachers the student already has bookings with
-    if (myTeacherIds.has(teacher._id)) {
+    const teacherId = teacher.id || teacher._id; // Support both for transition
+    if (myTeacherIds.has(teacherId)) {
       return false;
     }
 
@@ -97,9 +99,9 @@ export default function HomeTab({
   const renderTeacher = useCallback(
     ({ item: teacher }: { item: Teacher }) => (
       <Card
-        key={teacher._id}
+        key={teacher.id || teacher._id}
         style={styles.teacherCard}
-        onPress={() => router.push(`/(student)/teacher/${teacher._id}` as Href)}
+        onPress={() => router.push(`/(student)/teacher/${teacher.id || teacher._id}` as Href)}
       >
         <View style={styles.teacherCardContent}>
           <Avatar
@@ -159,12 +161,12 @@ export default function HomeTab({
 
             <View style={styles.teacherFooter}>
               <Text style={styles.priceText}>
-                {teacher.rate ? `$${teacher.rate}/hour` : "Rate TBD"}
+                {typeof teacher.rate === 'number' && teacher.rate > 0 ? `$${teacher.rate}/hour` : "Rate TBD"}
               </Text>
               <Button
                 size="sm"
                 onPress={() => {
-                  router.push(`/(student)/teacher/${teacher._id}` as Href);
+                  router.push(`/(student)/teacher/${teacher.id || teacher._id}` as Href);
                 }}
               >
                 View Profile
@@ -177,7 +179,7 @@ export default function HomeTab({
     [router]
   );
 
-  const keyExtractor = useCallback((item: Teacher) => item._id, []);
+  const keyExtractor = useCallback((item: Teacher) => item.id || item._id || "", []);
 
   return (
     <View style={styles.section}>
@@ -304,7 +306,7 @@ export default function HomeTab({
         >
           <View style={styles.collapsibleHeader}>
             <Text style={styles.sectionTitleInline}>Available Teachers</Text>
-            <Badge variant="default">{filteredTeachers.length} found</Badge>
+            <Badge variant="default">{teachers.length} total, {filteredTeachers.length} available</Badge>
           </View>
           <Ionicons
             name={showAvailableTeachers ? "chevron-up" : "chevron-down"}
@@ -333,8 +335,13 @@ export default function HomeTab({
               <Text style={styles.emptyText}>
                 {teachers.length === 0
                   ? "No teachers available yet. Check back soon."
-                  : "No teachers match your search criteria."}
+                  : `No teachers match your search criteria. (${teachers.length} teachers found but filtered out)`}
               </Text>
+              {teachers.length > 0 && (
+                <Text style={[styles.emptyText, { marginTop: 8, fontSize: 12, color: "#999" }]}>
+                  Try clearing your search or filters.
+                </Text>
+              )}
             </View>
           ) : (
             <FlatList

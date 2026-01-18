@@ -1,6 +1,6 @@
 // frontend/app/register-teacher.tsx
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,12 +10,14 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api } from "../../lib/api";
 import { storage } from "../../lib/storage";
+import { getCurrentLocationData, type LocationData } from "../../lib/location";
 
 const INSTRUMENT_OPTIONS = [
   { label: "Piano", value: "piano" },
@@ -50,9 +52,33 @@ export default function RegisterTeacher() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [location, setLocation] = useState("");
+  const [locationData, setLocationData] = useState<LocationData | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [selectedInstruments, setSelectedInstruments] = useState<string[]>([]);
   const [otherInstrument, setOtherInstrument] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Auto-detect location on component mount
+  useEffect(() => {
+    detectLocation();
+  }, []);
+
+  const detectLocation = async () => {
+    setLocationLoading(true);
+    try {
+      const data = await getCurrentLocationData();
+      if (data) {
+        setLocationData(data);
+        setLocation(data.location);
+      } else {
+        console.warn("Could not detect location automatically");
+      }
+    } catch (error) {
+      console.error("Location detection error:", error);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
 
   const toggleInstrument = (value: string) => {
     setSelectedInstruments((prev) =>
@@ -63,6 +89,11 @@ export default function RegisterTeacher() {
   const registerTeacher = async () => {
     if (!fullName || !email || !password || !confirmPassword) {
       alert("Please fill in all required fields.");
+      return;
+    }
+
+    if (password.length < 6) {
+      alert("Password must be at least 6 characters long.");
       return;
     }
 
@@ -90,7 +121,12 @@ export default function RegisterTeacher() {
           password,
           role: "teacher",
           instruments: allInstruments,
-          location,
+          location: locationData?.location || location,
+          city: locationData?.city || "",
+          state: locationData?.state || "",
+          country: locationData?.country || "",
+          latitude: locationData?.latitude,
+          longitude: locationData?.longitude,
         }),
       });
 
@@ -107,7 +143,15 @@ export default function RegisterTeacher() {
         },
       });
     } catch (err: any) {
-      alert(err.message || "Registration failed.");
+      // Handle validation errors from backend
+      if (err.message && Array.isArray(err.message)) {
+        // Backend validation errors come as an array
+        alert(err.message.join("\n"));
+      } else if (err.message) {
+        alert(err.message);
+      } else {
+        alert("Registration failed. Please check your information and try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -242,12 +286,31 @@ export default function RegisterTeacher() {
           />
 
           <Text style={styles.label}>Location</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="City, State"
-            value={location}
-            onChangeText={setLocation}
-          />
+          <View style={styles.locationContainer}>
+            <TextInput
+              style={[styles.input, styles.locationInput]}
+              placeholder="City, State, Country"
+              value={location}
+              onChangeText={setLocation}
+              editable={!locationLoading}
+            />
+            <TouchableOpacity
+              style={styles.locationButton}
+              onPress={detectLocation}
+              disabled={locationLoading}
+            >
+              {locationLoading ? (
+                <ActivityIndicator size="small" color="#FF6A5C" />
+              ) : (
+                <Ionicons name="location" size={20} color="#FF6A5C" />
+              )}
+            </TouchableOpacity>
+          </View>
+          {locationData && (
+            <Text style={styles.locationHint}>
+              ✓ Location detected: {locationData.city}, {locationData.state}
+            </Text>
+          )}
 
           <TouchableOpacity
             style={styles.submitButton}
@@ -371,5 +434,28 @@ const styles = StyleSheet.create({
   footerLink: {
     color: "#FF6A5C",
     fontWeight: "600",
+  },
+  locationContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  locationInput: {
+    flex: 1,
+  },
+  locationButton: {
+    padding: 12,
+    backgroundColor: "#FFE4DB",
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    minWidth: 44,
+    height: 44,
+  },
+  locationHint: {
+    fontSize: 12,
+    color: "#4CAF50",
+    marginTop: 4,
+    marginLeft: 4,
   },
 });

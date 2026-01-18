@@ -63,6 +63,53 @@ async function getToken() {
 }
 
 // --------------------------------------------
+// Normalize IDs: Add _id as alias for id (backward compatibility)
+// This allows frontend code using _id (MongoDB style) to work with backend returning id (PostgreSQL style)
+// --------------------------------------------
+function normalizeIds(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  // Handle arrays
+  if (Array.isArray(obj)) {
+    return obj.map(normalizeIds);
+  }
+
+  // Handle plain objects (not Date, RegExp, etc.)
+  if (typeof obj === 'object' && obj.constructor === Object) {
+    const normalized: any = {};
+    
+    // First pass: copy all properties and normalize nested objects
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        const value = obj[key];
+        
+        // Recursively normalize nested objects/arrays
+        if (value !== null && typeof value === 'object') {
+          normalized[key] = normalizeIds(value);
+        } else {
+          normalized[key] = value;
+        }
+      }
+    }
+    
+    // Second pass: add _id alias for id field
+    if (normalized.id && typeof normalized.id === 'string' && !normalized._id) {
+      normalized._id = normalized.id;
+    }
+    // If _id exists but id doesn't, add id as alias (for complete compatibility)
+    else if (normalized._id && typeof normalized._id === 'string' && !normalized.id) {
+      normalized.id = normalized._id;
+    }
+    
+    return normalized;
+  }
+
+  return obj;
+}
+
+// --------------------------------------------
 // Main API function
 // --------------------------------------------
 export async function api(path: string, init: ApiInit = {}) {
@@ -94,7 +141,10 @@ export async function api(path: string, init: ApiInit = {}) {
 
   // Only set Content-Type if it's not FormData (FormData sets its own Content-Type with boundary)
   const isFormData = init.body instanceof FormData;
-  if (!isFormData && !headers["Content-Type"]) {
+  if (isFormData) {
+    // Remove Content-Type header for FormData - browser will set it with boundary
+    delete headers["Content-Type"];
+  } else if (!headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -139,14 +189,19 @@ export async function api(path: string, init: ApiInit = {}) {
       data = text;
     }
 
+    // Transform response: add _id as alias for id (backward compatibility)
+    if (data && typeof data === 'object') {
+      data = normalizeIds(data);
+    }
+
     if (!response.ok) {
       const message =
         (data && (data.error || data.message)) ||
         `Request failed with ${response.status} ${response.statusText}`;
       
-      // Don't log 404 errors - they're often expected (resource not found)
+      // Don't log 404 errors (resource not found) or 401 errors (unauthorized/auth failures)
       // Only log errors that indicate actual problems
-      if (response.status !== 404) {
+      if (response.status !== 404 && response.status !== 401) {
         console.error(`[API] Error ${response.status} for ${init.method || 'GET'} ${url}:`, {
           status: response.status,
           statusText: response.statusText,

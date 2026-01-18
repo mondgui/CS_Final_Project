@@ -1,6 +1,6 @@
-// backend/routes/availabilityRoutes.js
+// backend/routes/availabilityRoutes.js - Converted to use Prisma
 import express from "express";
-import Availability from "../models/Availability.js";
+import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import roleMiddleware from "../middleware/roleMiddleware.js";
 
@@ -10,9 +10,14 @@ const router = express.Router();
 let io = null;
 export function setSocketIO(socketIO) {
   io = socketIO;
+  console.log(`[AvailabilityRoutes] setSocketIO called, io is now:`, io ? 'SET' : 'NULL');
 }
 
+// Attach setSocketIO to router so it's accessible via default import
+router.setSocketIO = setSocketIO;
+
 /**
+ * POST /api/availability
  * TEACHER: Create availability
  */
 router.post(
@@ -23,40 +28,49 @@ router.post(
     try {
       const { day, date, timeSlots } = req.body;
 
-      if (!day || !timeSlots) {
+      if (!day || !timeSlots || !Array.isArray(timeSlots) || timeSlots.length === 0) {
         return res.status(400).json({ message: "Day and timeSlots are required." });
       }
 
-      const availabilityData = {
-        teacher: req.user.id,
-        day,
-        timeSlots,
-      };
+      // Create availability with nested timeSlots
+      const availability = await prisma.availability.create({
+        data: {
+          teacherId: req.user.id,
+          day,
+          date: date ? new Date(date) : null,
+          timeSlots: {
+            create: timeSlots.map(slot => ({
+              start: slot.start,
+              end: slot.end,
+            })),
+          },
+        },
+        include: {
+          timeSlots: true,
+        },
+      });
 
-      // If date is provided, parse and store it
-      if (date) {
-        availabilityData.date = new Date(date);
-      }
-
-      const availability = new Availability(availabilityData);
-
-      await availability.save();
-
-      // Emit real-time event for availability update
+      // Emit real-time: teacher's own tab + students viewing this teacher's profile
+      console.log(`[Availability] POST - Checking io:`, io ? 'SET' : 'NULL');
       if (io) {
         const teacherIdStr = String(req.user.id);
-        // Emit to teacher's availability room
+        console.log(`[Availability] 📤 POST: Emitting to teacher-availability:${teacherIdStr} and availability-for-teacher:${teacherIdStr}`);
         io.to(`teacher-availability:${teacherIdStr}`).emit("availability-updated");
+        io.to(`availability-for-teacher:${teacherIdStr}`).emit("availability-updated");
+      } else {
+        console.error("[Availability] ❌ io is NULL - cannot emit real-time events!");
       }
 
       res.status(201).json(availability);
     } catch (err) {
+      console.error("Availability creation error:", err);
       res.status(500).json({ message: err.message });
     }
   }
 );
 
 /**
+ * PUT /api/availability/:id
  * TEACHER: Update availability
  */
 router.put(
@@ -65,123 +79,131 @@ router.put(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const availability = await Availability.findById(req.params.id);
+      const availability = await prisma.availability.findUnique({
+        where: { id: req.params.id },
+        include: { timeSlots: true },
+      });
 
       if (!availability) {
         return res.status(404).json({ message: "Availability not found." });
       }
 
-      if (availability.teacher.toString() !== req.user.id) {
+      if (availability.teacherId !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      availability.day = req.body.day || availability.day;
-      availability.timeSlots = req.body.timeSlots || availability.timeSlots;
-      
-      // Update date if provided
+      // Update availability and timeSlots
+      const updateData = {};
+      if (req.body.day !== undefined) updateData.day = req.body.day;
       if (req.body.date !== undefined) {
-        availability.date = req.body.date ? new Date(req.body.date) : null;
+        updateData.date = req.body.date ? new Date(req.body.date) : null;
       }
 
-      await availability.save();
+      // If timeSlots are provided, replace all existing ones
+      if (req.body.timeSlots && Array.isArray(req.body.timeSlots)) {
+        // Delete existing timeSlots
+        await prisma.timeSlot.deleteMany({
+          where: { availabilityId: req.params.id },
+        });
 
-      // Emit real-time event for availability update
+        // Create new timeSlots
+        updateData.timeSlots = {
+          create: req.body.timeSlots.map(slot => ({
+            start: slot.start,
+            end: slot.end,
+          })),
+        };
+      }
+
+      const updatedAvailability = await prisma.availability.update({
+        where: { id: req.params.id },
+        data: updateData,
+        include: {
+          timeSlots: true,
+        },
+      });
+
+      // Emit real-time: teacher's own tab + students viewing this teacher's profile
       if (io) {
-        const teacherIdStr = String(req.user.id);
-        // Emit to teacher's availability room
+        const teacherIdStr = String(availability.teacherId);
+        console.log(`[Availability] 📤 PUT: Emitting to teacher-availability:${teacherIdStr} and availability-for-teacher:${teacherIdStr}`);
         io.to(`teacher-availability:${teacherIdStr}`).emit("availability-updated");
+        io.to(`availability-for-teacher:${teacherIdStr}`).emit("availability-updated");
+      } else {
+        console.error("[Availability] ❌ io is NULL - cannot emit real-time events!");
       }
 
-      res.json(availability);
+      res.json(updatedAvailability);
     } catch (err) {
+      console.error("Availability update error:", err);
       res.status(500).json({ message: err.message });
     }
   }
 );
 
 /**
+ * GET /api/availability/teacher/:teacherId
  * STUDENT: View availability for a teacher
  */
 router.get("/teacher/:teacherId", async (req, res) => {
   try {
-    const Booking = (await import("../models/Booking.js")).default;
-    
-    const allAvailability = await Availability.find({
-      teacher: req.params.teacherId,
+    const allAvailability = await prisma.availability.findMany({
+      where: { teacherId: req.params.teacherId },
+      include: { timeSlots: true },
     });
     
     // Filter availability: keep date-based items that are today or future, and all recurring weekly items
-    // Use the 'day' field (YYYY-MM-DD) when available, as it represents the user's selected date
     const today = new Date();
     const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-    const todayStr = todayUTC.toISOString().split('T')[0]; // YYYY-MM-DD format in UTC
+    const todayStr = todayUTC.toISOString().split('T')[0];
     
-    // Calculate yesterday in UTC to account for timezone differences
-    // (e.g., if it's late evening in US, it might already be tomorrow in UTC)
     const yesterdayUTC = new Date(todayUTC);
     yesterdayUTC.setUTCDate(yesterdayUTC.getUTCDate() - 1);
     const yesterdayStr = yesterdayUTC.toISOString().split('T')[0];
     
     let availability = allAvailability.filter((item) => {
-      // If day is in YYYY-MM-DD format, use it for comparison (this is the date the user selected)
-      // Allow items from yesterday UTC onwards to account for timezone differences
       if (item.day && /^\d{4}-\d{2}-\d{2}$/.test(item.day)) {
-        return item.day >= yesterdayStr; // Keep if yesterday, today, or future
+        return item.day >= yesterdayStr;
       }
-      // If it has a specific date field (fallback), check if it's in the past
       if (item.date) {
         const itemDate = new Date(item.date);
-        // Validate that the date is valid before using it
         if (isNaN(itemDate.getTime())) {
-          return false; // Invalid date, filter it out
+          return false;
         }
-        // Compare dates in UTC to avoid timezone issues
-        const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
         const itemDateUTC = new Date(Date.UTC(itemDate.getUTCFullYear(), itemDate.getUTCMonth(), itemDate.getUTCDate()));
-        return itemDateUTC >= todayUTC; // Keep if today or future
+        return itemDateUTC >= todayUTC;
       }
-      // If no date field, it's recurring weekly availability (e.g., "Monday") - keep it
-      return true;
+      return true; // Recurring weekly availability
     });
     
     // Get all approved bookings for this teacher to filter out booked slots
-    const approvedBookings = await Booking.find({
-      teacher: req.params.teacherId,
-      status: "approved",
+    const approvedBookings = await prisma.booking.findMany({
+      where: {
+        teacherId: req.params.teacherId,
+        status: "APPROVED",
+      },
     });
     
     // Create a set of booked time slots for quick lookup
-    // Normalize day/date format for consistent comparison
     const bookedSlots = new Set();
     approvedBookings.forEach((booking) => {
-      // Normalize booking.day to a consistent format
       let bookingDayKey = booking.day;
-      
-      // If booking.day is a date string (YYYY-MM-DD format), use it as-is
       if (booking.day && /^\d{4}-\d{2}-\d{2}$/.test(booking.day)) {
         bookingDayKey = booking.day;
       }
-      // If booking.day is a day name (e.g., "Monday"), use it as-is for recurring availability matching
-      // Note: bookingDayKey will be the day name in this case
-      
-      const key = `${bookingDayKey}-${booking.timeSlot.start}-${booking.timeSlot.end}`;
+      const key = `${bookingDayKey}-${booking.startTime}-${booking.endTime}`;
       bookedSlots.add(key);
     });
     
     // Filter out booked time slots from availability
     availability = availability.map((item) => {
       const availableTimeSlots = (item.timeSlots || []).filter((slot) => {
-        // Normalize item.day for comparison - must match booking normalization logic
         let itemDayKey = item.day;
         
         if (item.date) {
-          // Date-based availability: convert date to YYYY-MM-DD format
-          // If item.day is already a date string, use it; otherwise convert from item.date
           if (item.day && /^\d{4}-\d{2}-\d{2}$/.test(item.day)) {
-            // item.day is already a date string, use it
             itemDayKey = item.day;
           } else {
-            // Convert item.date to YYYY-MM-DD format using UTC to ensure consistency
             const dateObj = new Date(item.date);
             if (!isNaN(dateObj.getTime())) {
               const year = dateObj.getUTCFullYear();
@@ -191,25 +213,26 @@ router.get("/teacher/:teacherId", async (req, res) => {
             }
           }
         }
-        // If no date field, item.day is a day name (e.g., "Monday") - use it as-is for recurring availability
         
         const key = `${itemDayKey}-${slot.start}-${slot.end}`;
         return !bookedSlots.has(key);
       });
       
       return {
-        ...item.toObject(),
+        ...item,
         timeSlots: availableTimeSlots,
       };
-    }).filter((item) => item.timeSlots.length > 0); // Only keep items with available slots
+    }).filter((item) => item.timeSlots.length > 0);
     
     res.json(availability);
   } catch (err) {
+    console.error("Get availability error:", err);
     res.status(500).json({ message: err.message });
   }
 });
 
 /**
+ * DELETE /api/availability/:id
  * TEACHER: Delete availability
  */
 router.delete(
@@ -218,23 +241,30 @@ router.delete(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const availability = await Availability.findById(req.params.id);
+      const availability = await prisma.availability.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!availability) {
         return res.status(404).json({ message: "Not found." });
       }
 
-      if (availability.teacher.toString() !== req.user.id) {
+      if (availability.teacherId !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      await availability.deleteOne();
+      const teacherIdStr = String(availability.teacherId);
+      await prisma.availability.delete({
+        where: { id: req.params.id },
+      });
 
-      // Emit real-time event for availability update
+      // Emit real-time: teacher's own tab + students viewing this teacher's profile
       if (io) {
-        const teacherIdStr = String(req.user.id);
-        // Emit to teacher's availability room
+        console.log(`[Availability] 📤 DELETE: Emitting to teacher-availability:${teacherIdStr} and availability-for-teacher:${teacherIdStr}`);
         io.to(`teacher-availability:${teacherIdStr}`).emit("availability-updated");
+        io.to(`availability-for-teacher:${teacherIdStr}`).emit("availability-updated");
+      } else {
+        console.error("[Availability] ❌ io is NULL - cannot emit real-time events!");
       }
 
       res.json({ message: "Availability deleted." });
@@ -245,6 +275,7 @@ router.delete(
 );
 
 /**
+ * GET /api/availability/me
  * TEACHER: Get your own availability
  */
 router.get(
@@ -253,42 +284,33 @@ router.get(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const allAvailability = await Availability.find({
-        teacher: req.user.id,
+      const allAvailability = await prisma.availability.findMany({
+        where: { teacherId: req.user.id },
+        include: { timeSlots: true },
       });
       
-      // Filter out past dates (keep recurring weekly availability and future dates)
-      // Use the 'day' field (YYYY-MM-DD) when available, as it represents the user's selected date
+      // Filter out past dates
       const today = new Date();
       const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-      const todayStr = todayUTC.toISOString().split('T')[0]; // YYYY-MM-DD format in UTC
+      const todayStr = todayUTC.toISOString().split('T')[0];
       
-      // Calculate yesterday in UTC to account for timezone differences
-      // (e.g., if it's late evening in US, it might already be tomorrow in UTC)
       const yesterdayUTC = new Date(todayUTC);
       yesterdayUTC.setUTCDate(yesterdayUTC.getUTCDate() - 1);
       const yesterdayStr = yesterdayUTC.toISOString().split('T')[0];
       
       const availability = allAvailability.filter((item) => {
-        // If day is in YYYY-MM-DD format, use it for comparison (this is the date the user selected)
-        // Allow items from yesterday UTC onwards to account for timezone differences
         if (item.day && /^\d{4}-\d{2}-\d{2}$/.test(item.day)) {
-          return item.day >= yesterdayStr; // Keep if yesterday, today, or future
+          return item.day >= yesterdayStr;
         }
-        // If it has a specific date field (fallback), check if it's in the past
         if (item.date) {
           const itemDate = new Date(item.date);
-          // Validate that the date is valid before using it
           if (isNaN(itemDate.getTime())) {
-            return false; // Invalid date, filter it out
+            return false;
           }
-          // Compare dates in UTC to avoid timezone issues
-          const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
           const itemDateUTC = new Date(Date.UTC(itemDate.getUTCFullYear(), itemDate.getUTCMonth(), itemDate.getUTCDate()));
-          return itemDateUTC >= todayUTC; // Keep if today or future
+          return itemDateUTC >= todayUTC;
         }
-        // If no date field, it's recurring weekly availability - keep it
-        return true;
+        return true; // Recurring weekly availability
       });
 
       res.json(availability);
@@ -297,7 +319,5 @@ router.get(
     }
   }
 );
-
-
 
 export default router;

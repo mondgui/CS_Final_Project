@@ -1,14 +1,13 @@
-// backend/routes/communityRoutes.js
+// backend/routes/communityRoutes.js - Converted to use Prisma
 import express from "express";
-import CommunityPost from "../models/CommunityPost.js";
+import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 /**
  * GET /api/community
- * Get community feed
- * Query params: filter (all, students, teachers), instrument, sort (recent, popular)
+ * Get community feed with filters
  */
 router.get("/", authMiddleware, async (req, res) => {
   try {
@@ -16,112 +15,127 @@ router.get("/", authMiddleware, async (req, res) => {
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    // Pagination parameters
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 20;
     const skip = (pageNum - 1) * limitNum;
 
-    // Build filter based on visibility and user role
-    const queryFilter = {};
-
-    // Visibility filter
-    if (filter === "students" || filter === "teachers") {
-      queryFilter.$or = [
-        { visibility: "public" },
-        ...(filter === "students" ? [{ visibility: "students" }] : []),
-        ...(filter === "teachers" ? [{ visibility: "teachers" }] : []),
-      ];
-    } else {
-      // "all" - show posts visible to current user
-      queryFilter.$or = [
-        { visibility: "public" },
-        ...(userRole === "student" ? [{ visibility: "students" }] : []),
-        ...(userRole === "teacher" ? [{ visibility: "teachers" }] : []),
-      ];
+    // Build visibility filter
+    const visibilityFilter = [];
+    visibilityFilter.push("public");
+    if (filter === "students" || userRole === "student") {
+      visibilityFilter.push("students");
     }
+    if (filter === "teachers" || userRole === "teacher") {
+      visibilityFilter.push("teachers");
+    }
+
+    const where = {
+      visibility: { in: visibilityFilter },
+    };
 
     if (instrument) {
-      queryFilter.instrument = instrument;
+      where.instrument = instrument;
     }
 
-    // Build sort
-    let sortOption = { createdAt: -1 }; // Default: most recent
+    // If filtering by author role, we need additional filtering after fetch
+    let orderBy = { createdAt: 'desc' };
     if (sort === "popular") {
-      sortOption = { likeCount: -1, createdAt: -1 }; // Most liked first
+      orderBy = { likeCount: 'desc', createdAt: 'desc' };
     } else if (sort === "comments") {
-      sortOption = { commentCount: -1, createdAt: -1 }; // Most commented first
+      orderBy = { commentCount: 'desc', createdAt: 'desc' };
     }
 
-    // If filtering by author role, we need to use aggregation to join with User collection
-    // Otherwise, use regular query for better performance
-    let posts, totalCount;
-    
+    let posts;
+    let totalCount;
+
     if (filter === "students" || filter === "teachers") {
-      // Use aggregation pipeline to filter by author role before pagination
       const roleToFilter = filter === "students" ? "student" : "teacher";
       
-      const pipeline = [
-        { $match: queryFilter },
-        {
-          $lookup: {
-            from: "users",
-            localField: "author",
-            foreignField: "_id",
-            as: "authorData"
-          }
+      // First get posts with visibility filter
+      const allPosts = await prisma.communityPost.findMany({
+        where,
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+              role: true,
+            },
+          },
+          likes: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          comments: {
+            include: {
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  profileImage: true,
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
         },
-        { $unwind: "$authorData" },
-        { $match: { "authorData.role": roleToFilter } },
-        {
-          $project: {
-            authorData: 0 // Remove temporary authorData field
-          }
-        }
-      ];
+        orderBy,
+      });
+
+      // Filter by author role
+      posts = allPosts.filter(post => post.author.role === roleToFilter);
+      totalCount = posts.length;
       
-      // Get total count with role filter
-      const countPipeline = [...pipeline, { $count: "total" }];
-      const countResult = await CommunityPost.aggregate(countPipeline);
-      totalCount = countResult[0]?.total || 0;
-      
-      // Add sorting, skip, and limit
-      pipeline.push({ $sort: sortOption });
-      pipeline.push({ $skip: skip });
-      pipeline.push({ $limit: limitNum });
-      
-      // Execute aggregation
-      const aggregatedPosts = await CommunityPost.aggregate(pipeline);
-      
-      // Convert to Mongoose documents and populate remaining fields
-      const postIds = aggregatedPosts.map(p => p._id);
-      posts = await CommunityPost.find({ _id: { $in: postIds } })
-        .populate("author", "name profileImage role")
-        .populate("likes", "name")
-        .populate("comments.author", "name profileImage")
-        .sort(sortOption);
+      // Apply pagination after filtering
+      posts = posts.slice(skip, skip + limitNum);
     } else {
-      // No role filtering - use regular query
-      totalCount = await CommunityPost.countDocuments(queryFilter);
+      totalCount = await prisma.communityPost.count({ where });
       
-      posts = await CommunityPost.find(queryFilter)
-        .populate("author", "name profileImage role")
-        .populate("likes", "name")
-        .populate("comments.author", "name profileImage")
-        .sort(sortOption)
-        .skip(skip)
-        .limit(limitNum);
+      posts = await prisma.communityPost.findMany({
+        where,
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+              role: true,
+            },
+          },
+          likes: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          comments: {
+            include: {
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  profileImage: true,
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+        orderBy,
+        skip,
+        take: limitNum,
+      });
     }
 
     // Check if current user liked each post
-    const postsWithLikeStatus = posts.map((post) => {
-      const postObj = post.toObject();
-      postObj.isLiked = post.likes.some(
-        (likeId) => likeId.toString() === userId
-      );
-      return postObj;
-    });
+    const postsWithLikeStatus = posts.map((post) => ({
+      ...post,
+      isLiked: post.likes.some(like => like.id === userId),
+    }));
 
-    // Calculate pagination info
     const totalPages = Math.ceil(totalCount / limitNum);
     const hasMore = pageNum < totalPages;
 
@@ -147,42 +161,63 @@ router.get("/", authMiddleware, async (req, res) => {
  */
 router.get("/me", authMiddleware, async (req, res) => {
   try {
-    const { page, limit } = req.query;
-    
-    // Pagination parameters
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 20;
-    const skip = (pageNum - 1) * limitNum;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-    // Get total count
-    const totalCount = await CommunityPost.countDocuments({ author: req.user.id });
+    const [posts, totalCount] = await Promise.all([
+      prisma.communityPost.findMany({
+        where: { authorId: req.user.id },
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              profileImage: true,
+              role: true,
+            },
+          },
+          likes: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          comments: {
+            include: {
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  profileImage: true,
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.communityPost.count({
+        where: { authorId: req.user.id },
+      }),
+    ]);
 
-    // Fetch posts with pagination
-    const posts = await CommunityPost.find({ author: req.user.id })
-      .populate("author", "name profileImage role")
-      .populate("likes", "name")
-      .populate("comments.author", "name profileImage")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limitNum);
+    const postsWithLikeStatus = posts.map((post) => ({
+      ...post,
+      isLiked: post.likes.some(like => like.id === req.user.id),
+    }));
 
-    const postsWithLikeStatus = posts.map((post) => {
-      const postObj = post.toObject();
-      postObj.isLiked = post.likes.some(
-        (likeId) => likeId.toString() === req.user.id
-      );
-      return postObj;
-    });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(totalCount / limitNum);
-    const hasMore = pageNum < totalPages;
+    const totalPages = Math.ceil(totalCount / limit);
+    const hasMore = page < totalPages;
 
     res.json({
       posts: postsWithLikeStatus,
       pagination: {
-        page: pageNum,
-        limit: limitNum,
+        page,
+        limit,
         total: totalCount,
         totalPages,
         hasMore,
@@ -200,21 +235,48 @@ router.get("/me", authMiddleware, async (req, res) => {
  */
 router.get("/:id", authMiddleware, async (req, res) => {
   try {
-    const post = await CommunityPost.findById(req.params.id)
-      .populate("author", "name profileImage role")
-      .populate("likes", "name")
-      .populate("comments.author", "name profileImage");
+    const post = await prisma.communityPost.findUnique({
+      where: { id: req.params.id },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            role: true,
+          },
+        },
+        likes: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        comments: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                profileImage: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
 
     if (!post) {
       return res.status(404).json({ message: "Post not found." });
     }
 
-    const postObj = post.toObject();
-    postObj.isLiked = post.likes.some(
-      (likeId) => likeId.toString() === req.user.id
-    );
+    const postWithLikeStatus = {
+      ...post,
+      isLiked: post.likes.some(like => like.id === req.user.id),
+    };
 
-    res.json(postObj);
+    res.json(postWithLikeStatus);
   } catch (err) {
     console.error("[Community] Error:", err);
     res.status(500).json({ message: err.message });
@@ -238,18 +300,6 @@ router.post("/", authMiddleware, async (req, res) => {
       visibility,
     } = req.body;
 
-    console.log("[Community] Creating post with data:", {
-      title,
-      hasDescription: !!description,
-      hasMediaUrl: !!mediaUrl,
-      mediaType,
-      hasThumbnailUrl: !!thumbnailUrl,
-      instrument,
-      level,
-      visibility,
-      author: req.user.id,
-    });
-
     if (!title || !mediaUrl || !mediaType || !instrument) {
       return res.status(400).json({
         message: "Title, mediaUrl, mediaType, and instrument are required.",
@@ -262,34 +312,37 @@ router.post("/", authMiddleware, async (req, res) => {
       });
     }
 
-    const post = await CommunityPost.create({
-      title,
-      description: description || "",
-      mediaUrl,
-      mediaType,
-      thumbnailUrl: thumbnailUrl || "",
-      instrument,
-      level: level || "Beginner",
-      visibility: visibility || "public",
-      author: req.user.id,
-      likes: [],
-      comments: [],
+    const post = await prisma.communityPost.create({
+      data: {
+        title,
+        description: description || "",
+        mediaUrl,
+        mediaType,
+        thumbnailUrl: thumbnailUrl || "",
+        instrument,
+        level: level || "Beginner",
+        visibility: visibility || "public",
+        authorId: req.user.id,
+        likeCount: 0,
+        commentCount: 0,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            role: true,
+          },
+        },
+      },
     });
 
-    await post.populate("author", "name profileImage role");
-
-    console.log("[Community] Post created successfully:", post._id);
     res.status(201).json(post);
   } catch (err) {
-    console.error("[Community] Error creating post:", {
-      message: err.message,
-      stack: err.stack,
-      name: err.name,
-      body: req.body,
-    });
+    console.error("[Community] Error creating post:", err);
     res.status(500).json({ 
       message: err.message || "Failed to create post",
-      error: process.env.NODE_ENV === "development" ? err.stack : undefined
     });
   }
 });
@@ -300,35 +353,66 @@ router.post("/", authMiddleware, async (req, res) => {
  */
 router.put("/:id", authMiddleware, async (req, res) => {
   try {
-    const post = await CommunityPost.findById(req.params.id);
+    const post = await prisma.communityPost.findUnique({
+      where: { id: req.params.id },
+    });
 
     if (!post) {
       return res.status(404).json({ message: "Post not found." });
     }
 
-    if (post.author.toString() !== req.user.id) {
+    if (post.authorId !== req.user.id) {
       return res.status(403).json({ message: "Unauthorized." });
     }
 
     const { title, description, instrument, level, visibility } = req.body;
 
-    if (title) post.title = title;
-    if (description !== undefined) post.description = description;
-    if (instrument) post.instrument = instrument;
-    if (level) post.level = level;
-    if (visibility) post.visibility = visibility;
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (instrument) updateData.instrument = instrument;
+    if (level) updateData.level = level;
+    if (visibility) updateData.visibility = visibility;
 
-    await post.save();
-    await post.populate("author", "name profileImage role");
-    await post.populate("likes", "name");
-    await post.populate("comments.author", "name profileImage");
+    const updatedPost = await prisma.communityPost.update({
+      where: { id: req.params.id },
+      data: updateData,
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            role: true,
+          },
+        },
+        likes: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        comments: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                profileImage: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
 
-    const postObj = post.toObject();
-    postObj.isLiked = post.likes.some(
-      (likeId) => likeId.toString() === req.user.id
-    );
+    const postWithLikeStatus = {
+      ...updatedPost,
+      isLiked: updatedPost.likes.some(like => like.id === req.user.id),
+    };
 
-    res.json(postObj);
+    res.json(postWithLikeStatus);
   } catch (err) {
     console.error("[Community] Error:", err);
     res.status(500).json({ message: err.message });
@@ -341,17 +425,21 @@ router.put("/:id", authMiddleware, async (req, res) => {
  */
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
-    const post = await CommunityPost.findById(req.params.id);
+    const post = await prisma.communityPost.findUnique({
+      where: { id: req.params.id },
+    });
 
     if (!post) {
       return res.status(404).json({ message: "Post not found." });
     }
 
-    if (post.author.toString() !== req.user.id) {
+    if (post.authorId !== req.user.id) {
       return res.status(403).json({ message: "Unauthorized." });
     }
 
-    await CommunityPost.findByIdAndDelete(req.params.id);
+    await prisma.communityPost.delete({
+      where: { id: req.params.id },
+    });
 
     res.json({ message: "Post deleted successfully." });
   } catch (err) {
@@ -366,34 +454,63 @@ router.delete("/:id", authMiddleware, async (req, res) => {
  */
 router.post("/:id/like", authMiddleware, async (req, res) => {
   try {
-    const post = await CommunityPost.findById(req.params.id);
+    const post = await prisma.communityPost.findUnique({
+      where: { id: req.params.id },
+      include: { likes: true },
+    });
 
     if (!post) {
       return res.status(404).json({ message: "Post not found." });
     }
 
     const userId = req.user.id;
-    const isLiked = post.likes.some((likeId) => likeId.toString() === userId);
+    const isLiked = post.likes.some(like => like.id === userId);
 
-    if (isLiked) {
-      // Unlike
-      post.likes = post.likes.filter(
-        (likeId) => likeId.toString() !== userId
-      );
-    } else {
-      // Like
-      post.likes.push(userId);
-    }
+    // Update likes relation
+    const updatedPost = await prisma.communityPost.update({
+      where: { id: req.params.id },
+      data: {
+        likes: isLiked
+          ? { disconnect: { id: userId } }
+          : { connect: { id: userId } },
+        likeCount: isLiked ? post.likeCount - 1 : post.likeCount + 1,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            role: true,
+          },
+        },
+        likes: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        comments: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                profileImage: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
 
-    await post.save();
-    await post.populate("author", "name profileImage role");
-    await post.populate("likes", "name");
-    await post.populate("comments.author", "name profileImage");
+    const postWithLikeStatus = {
+      ...updatedPost,
+      isLiked: !isLiked,
+    };
 
-    const postObj = post.toObject();
-    postObj.isLiked = !isLiked;
-
-    res.json(postObj);
+    res.json(postWithLikeStatus);
   } catch (err) {
     console.error("[Community] Error:", err);
     res.status(500).json({ message: err.message });
@@ -412,28 +529,65 @@ router.post("/:id/comment", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Comment text is required." });
     }
 
-    const post = await CommunityPost.findById(req.params.id);
+    const post = await prisma.communityPost.findUnique({
+      where: { id: req.params.id },
+    });
 
     if (!post) {
       return res.status(404).json({ message: "Post not found." });
     }
 
-    post.comments.push({
-      author: req.user.id,
-      text: text.trim(),
+    // Create comment
+    await prisma.comment.create({
+      data: {
+        postId: req.params.id,
+        authorId: req.user.id,
+        text: text.trim(),
+      },
     });
 
-    await post.save();
-    await post.populate("author", "name profileImage role");
-    await post.populate("likes", "name");
-    await post.populate("comments.author", "name profileImage");
+    // Update comment count
+    const updatedPost = await prisma.communityPost.update({
+      where: { id: req.params.id },
+      data: {
+        commentCount: post.commentCount + 1,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            role: true,
+          },
+        },
+        likes: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        comments: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                profileImage: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
 
-    const postObj = post.toObject();
-    postObj.isLiked = post.likes.some(
-      (likeId) => likeId.toString() === req.user.id
-    );
+    const postWithLikeStatus = {
+      ...updatedPost,
+      isLiked: updatedPost.likes.some(like => like.id === req.user.id),
+    };
 
-    res.json(postObj);
+    res.json(postWithLikeStatus);
   } catch (err) {
     console.error("[Community] Error:", err);
     res.status(500).json({ message: err.message });
@@ -446,39 +600,77 @@ router.post("/:id/comment", authMiddleware, async (req, res) => {
  */
 router.delete("/:id/comment/:commentId", authMiddleware, async (req, res) => {
   try {
-    const post = await CommunityPost.findById(req.params.id);
+    const post = await prisma.communityPost.findUnique({
+      where: { id: req.params.id },
+    });
 
     if (!post) {
       return res.status(404).json({ message: "Post not found." });
     }
 
-    const comment = post.comments.id(req.params.commentId);
+    const comment = await prisma.comment.findUnique({
+      where: { id: req.params.commentId },
+    });
 
     if (!comment) {
       return res.status(404).json({ message: "Comment not found." });
     }
 
-    // Check if user is comment author or post author
-    const isCommentAuthor =
-      comment.author.toString() === req.user.id;
-    const isPostAuthor = post.author.toString() === req.user.id;
+    // Check authorization
+    const isCommentAuthor = comment.authorId === req.user.id;
+    const isPostAuthor = post.authorId === req.user.id;
 
     if (!isCommentAuthor && !isPostAuthor) {
       return res.status(403).json({ message: "Unauthorized." });
     }
 
-    post.comments.pull(req.params.commentId);
-    await post.save();
-    await post.populate("author", "name profileImage role");
-    await post.populate("likes", "name");
-    await post.populate("comments.author", "name profileImage");
+    // Delete comment
+    await prisma.comment.delete({
+      where: { id: req.params.commentId },
+    });
 
-    const postObj = post.toObject();
-    postObj.isLiked = post.likes.some(
-      (likeId) => likeId.toString() === req.user.id
-    );
+    // Update comment count
+    const updatedPost = await prisma.communityPost.update({
+      where: { id: req.params.id },
+      data: {
+        commentCount: Math.max(0, post.commentCount - 1),
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            role: true,
+          },
+        },
+        likes: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        comments: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                profileImage: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
 
-    res.json(postObj);
+    const postWithLikeStatus = {
+      ...updatedPost,
+      isLiked: updatedPost.likes.some(like => like.id === req.user.id),
+    };
+
+    res.json(postWithLikeStatus);
   } catch (err) {
     console.error("[Community] Error:", err);
     res.status(500).json({ message: err.message });
@@ -486,4 +678,3 @@ router.delete("/:id/comment/:commentId", authMiddleware, async (req, res) => {
 });
 
 export default router;
-

@@ -1,70 +1,87 @@
-# Getting Started with Create React App
+# MusicOnTheGo Admin Panel
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Admin dashboard for managing the MusicOnTheGo platform.
 
-## Available Scripts
+## Setup
 
-In the project directory, you can run:
+1. Install dependencies:
+```bash
+npm install
+```
 
-### `npm start`
+2. Create `.env` file:
+```bash
+cp .env.example .env
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+3. Update `.env` with your API URL if different from default:
+```
+VITE_API_URL=http://localhost:5050
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+4. Start development server:
+```bash
+npm run dev
+```
 
-### `npm test`
+5. Open http://localhost:3001
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Creating an Admin Account
 
-### `npm run build`
+Admin accounts cannot be created through the regular registration process. Use one of these methods:
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Method 1: Using the Script (Recommended)
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Run the script from the backend directory:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+cd ../backend
+node scripts/create-admin.js <email> <password> [name]
+```
 
-### `npm run eject`
+**Example:**
+```bash
+node scripts/create-admin.js admin@musiconthego.com admin123 "Admin User"
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+This will:
+- Create a new admin account if the email doesn't exist
+- Update an existing user to admin role if the email already exists
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### Method 2: Using Prisma Studio
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+1. Open Prisma Studio:
+```bash
+cd ../backend
+npm run prisma:studio
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+2. Navigate to the `User` model
+3. Click "Add record"
+4. Fill in the fields:
+   - `email`: Your admin email
+   - `password`: Hash the password using bcrypt (or use the script above)
+   - `name`: Admin name
+   - `role`: Select "admin"
+5. Save the record
 
-## Learn More
+### Method 3: Direct SQL (Advanced)
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+If you have direct database access, you can insert an admin user directly:
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```sql
+INSERT INTO "User" (id, email, password, name, role, "createdAt", "updatedAt")
+VALUES (
+  gen_random_uuid(),
+  'admin@example.com',
+  '$2a$10$...' -- bcrypt hashed password
+  'Admin User',
+  'admin',
+  NOW(),
+  NOW()
+);
+```
 
-### Code Splitting
+## Login
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+After creating an admin account, open http://localhost:3001 and log in with your admin email and password.

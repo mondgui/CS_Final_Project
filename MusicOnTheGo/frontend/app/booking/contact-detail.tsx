@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -47,7 +49,7 @@ export default function InquiryForm() {
   useEffect(() => {
     const fetchTeacher = async () => {
       try {
-        const data = await api(`/api/teachers/${teacherId}`, {
+        const data = await api(`/api/users/teachers/${teacherId}`, {
           method: "GET",
           auth: true,
         });
@@ -123,8 +125,16 @@ export default function InquiryForm() {
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={true}
+      >
         {/* Header */}
         <LinearGradient colors={["#FF9076", "#FF6A5C"]} style={styles.header}>
           <TouchableOpacity
@@ -200,7 +210,7 @@ export default function InquiryForm() {
                 <SelectContent>
                   <SelectItem value="Child">Child (5-12) via parents/guardians</SelectItem>
                   <SelectItem value="Teen">Teen (13-17)</SelectItem>
-                  <SelectItem value="Young Adult">Young Adult (18-25)</SelectItem>
+                  <SelectItem value="YoungAdult">Young Adult (18-25)</SelectItem>
                   <SelectItem value="Adult">Adult (26-50)</SelectItem>
                   <SelectItem value="Senior">Senior (51+)</SelectItem>
                 </SelectContent>
@@ -217,7 +227,7 @@ export default function InquiryForm() {
                   <SelectValue placeholder="In-person, Online, Either" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="In-person">In-person</SelectItem>
+                  <SelectItem value="InPerson">In-person</SelectItem>
                   <SelectItem value="Online">Online</SelectItem>
                   <SelectItem value="Either">Either</SelectItem>
                 </SelectContent>
@@ -327,7 +337,7 @@ export default function InquiryForm() {
           </Card>
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -337,7 +347,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF5F3",
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 100, // Increased padding to ensure last fields are visible above keyboard
+    flexGrow: 1,
   },
   header: {
     paddingTop: 60,

@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { api } from "../../../../lib/api";
 
 type Inquiry = {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   student: {
-    _id: string;
+    id: string;
+    _id?: string; // Legacy support
     name: string;
     email: string;
   };
@@ -115,7 +117,7 @@ export default function InquiriesTab({ onMarkResponded }: Props) {
       </View>
 
       {inquiries.map((inquiry) => (
-        <Card key={inquiry._id} style={styles.inquiryCard}>
+        <Card key={inquiry.id || inquiry._id} style={styles.inquiryCard}>
           <View style={styles.inquiryHeader}>
             <View style={styles.inquiryInfo}>
               <Text style={styles.studentName}>
@@ -206,7 +208,7 @@ export default function InquiriesTab({ onMarkResponded }: Props) {
             <View style={styles.actionsRow}>
               <Button
                 size="sm"
-                onPress={() => handleMarkResponded(inquiry._id)}
+                onPress={() => handleMarkResponded(inquiry.id || inquiry._id)}
                 style={styles.respondButton}
               >
                 Mark as Responded
