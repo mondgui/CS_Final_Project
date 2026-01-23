@@ -3,6 +3,7 @@ import express from 'express';
 import prisma from '../utils/prisma.js';
 import authMiddleware from '../middleware/authMiddleware.js';
 import { sendSupportTicketReplyEmail } from '../utils/emailService.js';
+import { sendPushNotification } from '../utils/pushNotificationService.js';
 
 const router = express.Router();
 
@@ -315,6 +316,22 @@ router.put('/admin/support-tickets/:id/reply', authMiddleware, async (req, res) 
       reply.trim(),
       ticket.id
     );
+
+    // Send push notification if user is logged in (has userId)
+    if (ticket.userId) {
+      const replyPreview = reply.trim().length > 80 
+        ? reply.trim().substring(0, 80) + "..." 
+        : reply.trim();
+
+      await sendPushNotification(ticket.userId, {
+        title: "Support Ticket Reply",
+        body: `We've replied to your ticket: ${ticket.subject}`,
+        data: {
+          type: "support_reply",
+          ticketId: ticket.id,
+        },
+      });
+    }
 
     // Update reply record with email status (if using new system)
     if (useNewReplySystem && ticketReply && emailSent) {

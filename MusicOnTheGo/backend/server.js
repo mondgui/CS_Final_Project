@@ -116,6 +116,7 @@ import practiceRoutes from './routes/practiceRoutes.js';
 import communityRoutes from './routes/communityRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 
 // Set Socket.io for routes that need it (messages use Supabase Realtime)
 console.log("[Server] Setting up Socket.io for routes...");
@@ -157,6 +158,7 @@ app.use('/api/practice', practiceRoutes);
 app.use('/api/community', communityRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

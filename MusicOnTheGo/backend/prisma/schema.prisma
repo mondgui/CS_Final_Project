@@ -75,6 +75,7 @@ model User {
   supportTickets          SupportTicket[]  @relation
   handledSupportTickets   SupportTicket[]  @relation("SupportTicketAdmin")
   supportTicketReplies    SupportTicketReply[] @relation("SupportTicketReplyAdmin") // Replies sent by this admin
+  deviceTokens            DeviceToken[]    // Push notification device tokens
   
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
@@ -245,6 +246,7 @@ model Resource {
   description String        @default("")
   fileUrl     String        @default("")
   externalUrl String        @default("")
+  fileName    String        @default("") // Original filename from user's device
   fileType    ResourceType
   fileSize    Int           @default(0)
   instrument  String
@@ -496,4 +498,22 @@ enum SupportStatus {
   replied
   resolved
   closed
+}
+
+// Device Token model - stores push notification tokens for users
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique // Expo push token
+  platform  String   // "ios" or "android"
+  deviceId  String?  // Optional device identifier
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([token])
 }

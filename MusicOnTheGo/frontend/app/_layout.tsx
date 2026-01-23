@@ -1,9 +1,21 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
+import { LogBox } from 'react-native';
 import 'react-native-reanimated';
 import { useColorScheme } from '../hooks/use-color-scheme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// Suppress specific warnings
+if (__DEV__) {
+  LogBox.ignoreLogs([
+    /baseline-browser-mapping/,
+    /expo-notifications.*Expo Go/,
+    /expo-notifications.*development build/,
+    /Require cycle/,
+    /Push notifications.*remote notifications/,
+  ]);
+}
 
 // Create a QueryClient instance
 const queryClient = new QueryClient({

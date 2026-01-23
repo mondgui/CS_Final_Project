@@ -2,6 +2,7 @@
 import express from "express";
 import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
+import { sendPushNotification } from "../utils/pushNotificationService.js";
 import roleMiddleware from "../middleware/roleMiddleware.js";
 
 const router = express.Router();
@@ -61,6 +62,23 @@ router.post("/", authMiddleware, async (req, res) => {
     if (io) {
       io.to(`user:${teacher}`).emit("new-inquiry", inquiry);
     }
+
+    // Get student name for notification
+    const student = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { name: true },
+    });
+
+    // Send push notification to teacher
+    await sendPushNotification(teacher, {
+      title: "New Lesson Inquiry",
+      body: `${student?.name || "A student"} sent you an inquiry for ${instrument} lessons`,
+      data: {
+        type: "inquiry",
+        inquiryId: inquiry.id,
+        studentId: req.user.id,
+      },
+    });
 
     res.status(201).json(inquiry);
   } catch (err) {

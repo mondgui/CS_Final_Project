@@ -28,6 +28,7 @@ interface Resource {
   description: string;
   fileUrl: string;
   externalUrl: string;
+  fileName?: string; // Original filename from user's device
   fileType: "pdf" | "image" | "audio" | "video" | "link";
   fileSize: number;
   instrument: string;
@@ -308,6 +309,7 @@ export default function TeacherResourcesScreen() {
         description: description || "",
         fileUrl: selectedFile ? fileUrl : "",
         externalUrl: selectedFile ? "" : fileUrl,
+        fileName: selectedFile ? (selectedFile.name || "") : (externalUrl || ""),
         fileType,
         fileSize,
         instrument,
@@ -613,20 +615,47 @@ export default function TeacherResourcesScreen() {
     );
   };
 
-  const renderResourceCard = (resource: Resource) => (
-    <Card key={resource._id} style={styles.resourceCard}>
-      <View style={styles.resourceRow}>
-        <View style={styles.resourceIcon}>
-          {getIcon(resource.fileType)}
-        </View>
-        <View style={styles.resourceInfo}>
-          <Text style={styles.resourceName}>{resource.title}</Text>
-          {resource.description ? (
-            <Text style={styles.resourceDescription}>
-              {resource.description}
-            </Text>
-          ) : null}
-          <View style={styles.resourceMeta}>
+  // Helper function to extract filename from URL
+  const getFileName = (url: string): string => {
+    if (!url) return "";
+    try {
+      // Extract filename from URL
+      const urlParts = url.split("/");
+      const filename = urlParts[urlParts.length - 1].split("?")[0]; // Remove query params
+      // Decode URL-encoded filename
+      return decodeURIComponent(filename);
+    } catch {
+      // If URL parsing fails, return a shortened version
+      return url.length > 50 ? url.substring(0, 50) + "..." : url;
+    }
+  };
+
+  const renderResourceCard = (resource: Resource) => {
+    // Use stored fileName if available, otherwise extract from URL
+    const fileName = resource.fileName || getFileName(resource.fileUrl || resource.externalUrl || "");
+    
+    return (
+      <Card key={resource._id} style={styles.resourceCard}>
+        <View style={styles.resourceRow}>
+          <View style={styles.resourceIcon}>
+            {getIcon(resource.fileType)}
+          </View>
+          <View style={styles.resourceInfo}>
+            <Text style={styles.resourceName}>{resource.title}</Text>
+            {fileName ? (
+              <View style={styles.fileNameContainer}>
+                <Ionicons name="document-text-outline" size={14} color="#666" />
+                <Text style={styles.fileNameText} numberOfLines={1}>
+                  {fileName}
+                </Text>
+              </View>
+            ) : null}
+            {resource.description ? (
+              <Text style={styles.resourceDescription}>
+                {resource.description}
+              </Text>
+            ) : null}
+            <View style={styles.resourceMeta}>
             <Badge variant="default" style={styles.levelBadge}>
               {resource.level}
             </Badge>
@@ -678,7 +707,8 @@ export default function TeacherResourcesScreen() {
         </View>
       </View>
     </Card>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -1448,6 +1478,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: "#333",
+  },
+  fileNameContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  fileNameText: {
+    fontSize: 13,
+    color: "#666",
+    flex: 1,
   },
   fileButton: {
     flexDirection: "row",

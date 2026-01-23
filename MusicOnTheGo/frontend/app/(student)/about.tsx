@@ -191,7 +191,7 @@ export default function AboutScreen() {
           {/* Contact */}
           <View style={styles.contactSection}>
             <Text style={styles.contactText}>Questions or feedback?</Text>
-            <Text style={styles.contactEmail}>support@musiconthego.com</Text>
+            <Text style={styles.contactEmail}>musiconthego.app@gmail.com</Text>
           </View>
         </View>
       </ScrollView>

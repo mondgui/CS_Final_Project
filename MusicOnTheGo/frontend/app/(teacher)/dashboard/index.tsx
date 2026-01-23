@@ -23,6 +23,7 @@ import type { Socket } from "socket.io-client";
 import ScheduleBookingsTab, { type Booking } from "./_tabs/ScheduleBookingsTab";
 import TimesTab from "./_tabs/TimesTab";
 import AnalyticsTab from "./_tabs/AnalyticsTab";
+import ReviewsTab from "./_tabs/ReviewsTab";
 import SettingsTab from "./_tabs/SettingsTab";
 
 type TabKey = "home" | "bookings" | "settings";
@@ -565,6 +566,7 @@ export default function TeacherDashboard() {
           {activeTab === "home" && (
             <HomeTabContent
               user={user}
+              userId={userId}
               availabilityData={availabilityData}
               defaultTab={innerTab}
               bookings={bookings}
@@ -602,6 +604,7 @@ export default function TeacherDashboard() {
 // Home Tab Content Component
 type HomeTabContentProps = {
   user: any;
+  userId: string | null;
   availabilityData: AvailabilityDay[];
   defaultTab?: string;
   bookings: any[];
@@ -616,6 +619,7 @@ type HomeTabContentProps = {
 
 function HomeTabContent({
   user,
+  userId,
   availabilityData,
   defaultTab = "schedule-bookings",
   bookings,
@@ -678,6 +682,7 @@ function HomeTabContent({
             <TabsTrigger value="schedule-bookings">Schedule</TabsTrigger>
             <TabsTrigger value="times">Times</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="reviews">Reviews</TabsTrigger>
             {/* Bookings tab removed - merged into Schedule tab */}
           </TabsList>
 
@@ -703,6 +708,10 @@ function HomeTabContent({
               bookings={bookings}
               user={user}
             />
+          </TabsContent>
+
+          <TabsContent value="reviews">
+            <ReviewsTab teacherId={userId || undefined} />
           </TabsContent>
         </Tabs>
       </View>

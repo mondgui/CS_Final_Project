@@ -102,10 +102,13 @@ export default function TeacherProfileScreen() {
       const bookingsArray = bookings?.bookings || bookings || [];
       const hasBookingWithTeacher = bookingsArray.some((booking: any) => {
         const bookingTeacherId = booking.teacher?.id || booking.teacher?._id || booking.teacher;
-        return String(bookingTeacherId) === String(teacherId) && booking.status === "approved";
+        // Check for both uppercase (Prisma enum) and lowercase status
+        const status = booking.status?.toUpperCase();
+        return String(bookingTeacherId) === String(teacherId) && status === "APPROVED";
       });
       setHasBooking(hasBookingWithTeacher);
     } catch (err: any) {
+      console.log("Error checking booking:", err.message);
       setHasBooking(false);
     }
   }, [teacherId]);
@@ -555,7 +558,7 @@ export default function TeacherProfileScreen() {
           <Card style={styles.reviewsCard}>
             <View style={styles.reviewsHeader}>
               <Text style={styles.cardTitle}>Reviews</Text>
-              {hasBooking && (
+              {hasBooking && reviews.length > 0 && (
                 <Button
                   size="sm"
                   onPress={() => setShowReviewDialog(true)}
@@ -569,9 +572,25 @@ export default function TeacherProfileScreen() {
             {loadingReviews ? (
               <ActivityIndicator color="#FF6A5C" style={{ marginTop: 16 }} />
             ) : reviews.length === 0 ? (
-              <Text style={styles.noReviewsText}>
-                No reviews yet. Be the first to review this teacher!
-              </Text>
+              <View style={styles.noReviewsContainer}>
+                <Text style={styles.noReviewsText}>
+                  No reviews yet. Be the first to review this teacher!
+                </Text>
+                {hasBooking && (
+                  <Button
+                    size="sm"
+                    onPress={() => setShowReviewDialog(true)}
+                    style={styles.writeReviewButtonInEmpty}
+                  >
+                    {myReview ? "Edit Review" : "Write Review"}
+                  </Button>
+                )}
+                {!hasBooking && (
+                  <Text style={styles.noBookingHint}>
+                    Book a lesson with this teacher to leave a review
+                  </Text>
+                )}
+              </View>
             ) : (
               <View style={styles.reviewsList}>
                 {reviews.map((review) => (
@@ -970,12 +989,27 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 8,
   },
+  noReviewsContainer: {
+    paddingVertical: 16,
+    alignItems: "center",
+    gap: 12,
+  },
   noReviewsText: {
     fontSize: 14,
     color: "#999",
     textAlign: "center",
-    paddingVertical: 16,
     fontStyle: "italic",
+  },
+  writeReviewButtonInEmpty: {
+    minWidth: 120,
+    marginTop: 8,
+  },
+  noBookingHint: {
+    fontSize: 12,
+    color: "#999",
+    textAlign: "center",
+    fontStyle: "italic",
+    marginTop: 4,
   },
   dialogTitleText: {
     fontSize: 20,

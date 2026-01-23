@@ -3,6 +3,7 @@ import express from "express";
 import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import roleMiddleware from "../middleware/roleMiddleware.js";
+import { sendPushNotification } from "../utils/pushNotificationService.js";
 
 const router = express.Router();
 
@@ -141,6 +142,17 @@ router.post(
         console.error("[Booking] ❌ io is NULL - cannot emit real-time events!");
       }
 
+      // Send push notification to teacher about new booking request
+      await sendPushNotification(teacher, {
+        title: "New Booking Request",
+        body: `${booking.student.name} requested a lesson on ${day} at ${startTime}`,
+        data: {
+          type: "booking_request",
+          bookingId: booking.id,
+          studentId: booking.student.id,
+        },
+      });
+
       // Add conflict warning if another pending booking exists
       if (existingPending) {
         return res.status(201).json({
@@ -266,6 +278,23 @@ router.put(
       } else {
         console.error("[Booking] ❌ io is NULL - cannot emit status update events!");
       }
+
+      // Send push notification to student about booking status change
+      const statusMessages = {
+        APPROVED: "Your booking request has been approved!",
+        REJECTED: "Your booking request was declined.",
+        PENDING: "Your booking request is pending review.",
+      };
+
+      await sendPushNotification(updatedBooking.studentId, {
+        title: "Booking Status Updated",
+        body: statusMessages[normalizedStatus] || `Your booking status changed to ${normalizedStatus}`,
+        data: {
+          type: "booking_status",
+          bookingId: updatedBooking.id,
+          status: normalizedStatus,
+        },
+      });
 
       res.json(updatedBooking);
     } catch (err) {

@@ -75,24 +75,33 @@ router.get(
 
       // User growth over time
       const userGrowthData = [];
+      // Query all users created since startDate (no upper limit to catch new users)
       const usersInRange = await prisma.user.findMany({
         where: {
-          createdAt: { gte: startDate, lte: now },
+          createdAt: { gte: startDate },
         },
         select: { createdAt: true },
+        orderBy: { createdAt: 'asc' },
       });
 
       if (aggregationUnit === 'day') {
         const growthMap = new Map();
         usersInRange.forEach(user => {
-          const dateStr = user.createdAt.toISOString().split('T')[0];
+          // Use UTC date to match database timestamps (Prisma stores as UTC)
+          const userDate = new Date(user.createdAt);
+          const dateStr = userDate.toISOString().split('T')[0];
           growthMap.set(dateStr, (growthMap.get(dateStr) || 0) + 1);
         });
         
+        // Generate data for all days in range, including today
+        // Use UTC for all date operations to match database
+        const today = new Date();
+        const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+        
         for (let i = days - 1; i >= 0; i--) {
-          const date = new Date(now);
-          date.setDate(date.getDate() - i);
-          date.setHours(0, 0, 0, 0);
+          const date = new Date(todayUTC);
+          date.setUTCDate(date.getUTCDate() - i);
+          date.setUTCHours(0, 0, 0, 0);
           const dateStr = date.toISOString().split('T')[0];
           userGrowthData.push({
             date: dateStr,

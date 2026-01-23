@@ -2,6 +2,7 @@
 import express from "express";
 import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
+import { sendPushNotification } from "../utils/pushNotificationService.js";
 
 const router = express.Router();
 
@@ -257,6 +258,21 @@ router.post("/", authMiddleware, async (req, res) => {
             profileImage: true,
           },
         },
+      },
+    });
+
+    // Send push notification to recipient
+    const messagePreview = text.trim().length > 50 
+      ? text.trim().substring(0, 50) + "..." 
+      : text.trim();
+
+    await sendPushNotification(recipientId, {
+      title: message.sender.name,
+      body: messagePreview,
+      data: {
+        type: "message",
+        senderId: req.user.id,
+        roomId: roomId,
       },
     });
 
