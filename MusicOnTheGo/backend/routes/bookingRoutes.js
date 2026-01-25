@@ -1,8 +1,9 @@
-// backend/routes/bookingRoutes.js
+// backend/routes/bookingRoutes.js - Converted to use Prisma
 import express from "express";
-import Booking from "../models/Booking.js";
+import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import roleMiddleware from "../middleware/roleMiddleware.js";
+import { sendPushNotification } from "../utils/pushNotificationService.js";
 
 const router = express.Router();
 
@@ -10,9 +11,14 @@ const router = express.Router();
 let io = null;
 export function setSocketIO(socketIO) {
   io = socketIO;
+  console.log(`[BookingRoutes] setSocketIO called, io is now:`, io ? 'SET' : 'NULL');
 }
 
+// Attach setSocketIO to router so it's accessible via default import
+router.setSocketIO = setSocketIO;
+
 /**
+ * POST /api/bookings
  * STUDENT: Create a booking request
  */
 router.post(
@@ -27,13 +33,18 @@ router.post(
         return res.status(400).json({ message: "Missing required fields." });
       }
 
+      // Extract startTime and endTime from timeSlot object
+      const startTime = timeSlot.start;
+      const endTime = timeSlot.end;
+
       // Check if student has had a conversation with the teacher
-      const Message = (await import("../models/Message.js")).default;
-      const conversationExists = await Message.findOne({
-        $or: [
-          { sender: req.user.id, recipient: teacher },
-          { sender: teacher, recipient: req.user.id },
-        ],
+      const conversationExists = await prisma.message.findFirst({
+        where: {
+          OR: [
+            { senderId: req.user.id, recipientId: teacher },
+            { senderId: teacher, recipientId: req.user.id },
+          ],
+        },
       });
 
       if (!conversationExists) {
@@ -43,12 +54,14 @@ router.post(
       }
 
       // Check if there's already an approved booking for this time slot
-      const existingApproved = await Booking.findOne({
-        teacher,
-        day,
-        "timeSlot.start": timeSlot.start,
-        "timeSlot.end": timeSlot.end,
-        status: "approved",
+      const existingApproved = await prisma.booking.findFirst({
+        where: {
+          teacherId: teacher,
+          day,
+          startTime,
+          endTime,
+          status: "APPROVED",
+        },
       });
 
       if (existingApproved) {
@@ -58,13 +71,15 @@ router.post(
       }
 
       // Check if the same student already has a pending or approved booking for this time slot
-      const existingStudentBooking = await Booking.findOne({
-        student: req.user.id,
-        teacher,
-        day,
-        "timeSlot.start": timeSlot.start,
-        "timeSlot.end": timeSlot.end,
-        status: { $in: ["pending", "approved"] },
+      const existingStudentBooking = await prisma.booking.findFirst({
+        where: {
+          studentId: req.user.id,
+          teacherId: teacher,
+          day,
+          startTime,
+          endTime,
+          status: { in: ["PENDING", "APPROVED"] },
+        },
       });
 
       if (existingStudentBooking) {
@@ -74,77 +89,88 @@ router.post(
       }
 
       // Check if another student has a pending booking for this time slot
-      const existingPending = await Booking.findOne({
-        teacher,
-        day,
-        "timeSlot.start": timeSlot.start,
-        "timeSlot.end": timeSlot.end,
-        status: "pending",
+      const existingPending = await prisma.booking.findFirst({
+        where: {
+          teacherId: teacher,
+          day,
+          startTime,
+          endTime,
+          status: "PENDING",
+        },
       });
 
-      if (existingPending) {
-        // Allow the booking but note that there's a conflict
-        // The teacher will see multiple pending requests and can choose
-        const booking = new Booking({
-          student: req.user.id,
-          teacher,
+      // Create booking
+      const booking = await prisma.booking.create({
+        data: {
+          studentId: req.user.id,
+          teacherId: teacher,
           day,
-          timeSlot,
-        });
+          startTime,
+          endTime,
+          status: "PENDING",
+        },
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+            },
+          },
+          teacher: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
 
-        await booking.save();
+      // Emit real-time: to teacher (new pending) and to student (their Lessons list)
+      console.log(`[Booking] POST - Checking io:`, io ? 'SET' : 'NULL');
+      if (io) {
+        const teacherIdStr = String(teacher);
+        const studentIdStr = String(req.user.id);
+        console.log(`[Booking] 📤 Emitting: user:${teacherIdStr}, teacher-bookings:${teacherIdStr}, student-bookings:${studentIdStr}`);
+        io.to(`user:${teacherIdStr}`).emit("new-booking-request", booking);
+        io.to(`teacher-bookings:${teacherIdStr}`).emit("booking-updated", booking);
+        io.to(`student-bookings:${studentIdStr}`).emit("booking-updated", booking);
+      } else {
+        console.error("[Booking] ❌ io is NULL - cannot emit real-time events!");
+      }
 
-        // Populate booking for socket emission
-        const populatedBooking = await Booking.findById(booking._id)
-          .populate("student", "name email profileImage")
-          .populate("teacher", "name email profileImage");
+      // Send push notification to teacher about new booking request
+      await sendPushNotification(teacher, {
+        title: "New Booking Request",
+        body: `${booking.student.name} requested a lesson on ${day} at ${startTime}`,
+        data: {
+          type: "booking_request",
+          bookingId: booking.id,
+          studentId: booking.student.id,
+        },
+      });
 
-        // Emit real-time event to teacher
-        if (io) {
-          const teacherIdStr = String(teacher);
-          // Emit to teacher's personal room
-          io.to(`user:${teacherIdStr}`).emit("new-booking-request", populatedBooking);
-          // Also emit to teacher's bookings room (if they're viewing bookings)
-          io.to(`teacher-bookings:${teacherIdStr}`).emit("booking-updated", populatedBooking);
-        }
-
+      // Add conflict warning if another pending booking exists
+      if (existingPending) {
         return res.status(201).json({
-          ...booking.toObject(),
+          ...booking,
           conflictWarning: "Another student has also requested this time slot. The teacher will review all requests.",
         });
       }
 
-      const booking = new Booking({
-        student: req.user.id,
-        teacher,
-        day,
-        timeSlot,
-      });
-
-      await booking.save();
-
-      // Populate booking for socket emission
-      const populatedBooking = await Booking.findById(booking._id)
-        .populate("student", "name email profileImage")
-        .populate("teacher", "name email profileImage");
-
-      // Emit real-time event to teacher
-      if (io) {
-        const teacherIdStr = String(teacher);
-        // Emit to teacher's personal room
-        io.to(`user:${teacherIdStr}`).emit("new-booking-request", populatedBooking);
-        // Also emit to teacher's bookings room (if they're viewing bookings)
-        io.to(`teacher-bookings:${teacherIdStr}`).emit("booking-updated", populatedBooking);
-      }
-
       res.status(201).json(booking);
     } catch (err) {
+      console.error("Booking creation error:", err);
       res.status(500).json({ message: err.message });
     }
   }
 );
 
 /**
+ * PUT /api/bookings/:id/status
  * TEACHER: Approve or reject booking
  */
 router.put(
@@ -154,29 +180,36 @@ router.put(
   async (req, res) => {
     try {
       const { status } = req.body;
-      const booking = await Booking.findById(req.params.id);
+      const bookingId = req.params.id;
 
-      if (!booking) return res.status(404).json({ message: "Booking not found." });
+      const booking = await prisma.booking.findUnique({
+        where: { id: bookingId },
+      });
+
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found." });
+      }
 
       // Ensure only the correct teacher can update
-      if (booking.teacher.toString() !== req.user.id) {
+      if (booking.teacherId !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized teacher." });
       }
 
-      // If approving a booking, we need to atomically:
-      // 1. Check that no other booking was approved for this slot
-      // 2. Reject all other pending bookings for the same slot
-      // 3. Save the current booking as approved
-      // To minimize race conditions, we do the rejection first, then save
-      if (status === "approved") {
-        // First, check if another booking was just approved for this slot (race condition check)
-        const conflictingApproved = await Booking.findOne({
-          _id: { $ne: booking._id },
-          teacher: booking.teacher,
-          day: booking.day,
-          "timeSlot.start": booking.timeSlot.start,
-          "timeSlot.end": booking.timeSlot.end,
-          status: "approved",
+      // Normalize status to uppercase (Prisma enum uses uppercase)
+      const normalizedStatus = status.toUpperCase();
+
+      // If approving a booking, reject all other pending bookings for the same slot
+      if (normalizedStatus === "APPROVED") {
+        // Check for conflicting approved booking
+        const conflictingApproved = await prisma.booking.findFirst({
+          where: {
+            id: { not: bookingId },
+            teacherId: booking.teacherId,
+            day: booking.day,
+            startTime: booking.startTime,
+            endTime: booking.endTime,
+            status: "APPROVED",
+          },
         });
 
         if (conflictingApproved) {
@@ -185,60 +218,94 @@ router.put(
           });
         }
 
-        // Reject all other pending bookings for the same time slot atomically
-        await Booking.updateMany(
-          {
-            _id: { $ne: booking._id }, // Exclude the just-approved booking
-            teacher: booking.teacher,
+        // Reject all other pending bookings for the same time slot
+        await prisma.booking.updateMany({
+          where: {
+            id: { not: bookingId },
+            teacherId: booking.teacherId,
             day: booking.day,
-            "timeSlot.start": booking.timeSlot.start,
-            "timeSlot.end": booking.timeSlot.end,
-            status: "pending",
+            startTime: booking.startTime,
+            endTime: booking.endTime,
+            status: "PENDING",
           },
-          {
-            $set: { status: "rejected" },
-          }
-        );
+          data: {
+            status: "REJECTED",
+          },
+        });
       }
 
-      booking.status = status;
-      await booking.save();
-
-      // Populate booking for socket emission
-      const populatedBooking = await Booking.findById(booking._id)
-        .populate("student", "name email profileImage")
-        .populate("teacher", "name email profileImage");
+      // Update booking status
+      const updatedBooking = await prisma.booking.update({
+        where: { id: bookingId },
+        data: { status: normalizedStatus },
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+            },
+          },
+          teacher: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+            },
+          },
+        },
+      });
 
       // Emit real-time events
+      console.log(`[Booking] PUT Status - Checking io:`, io ? 'SET' : 'NULL');
       if (io) {
-        const studentIdStr = String(booking.student);
-        const teacherIdStr = String(booking.teacher);
+        const studentIdStr = String(updatedBooking.studentId);
+        const teacherIdStr = String(updatedBooking.teacherId);
         
-        // Emit to student's personal room
+        console.log(`[Booking] 📤 Status update: user:${studentIdStr}, student-bookings:${studentIdStr}, teacher-bookings:${teacherIdStr}, status:${normalizedStatus}`);
         io.to(`user:${studentIdStr}`).emit("booking-status-changed", {
-          booking: populatedBooking,
-          status: status,
+          booking: updatedBooking,
+          status: normalizedStatus,
         });
-        // Also emit to student's bookings room
-        io.to(`student-bookings:${studentIdStr}`).emit("booking-updated", populatedBooking);
+        io.to(`student-bookings:${studentIdStr}`).emit("booking-updated", updatedBooking);
+        io.to(`teacher-bookings:${teacherIdStr}`).emit("booking-updated", updatedBooking);
         
-        // Emit to teacher's bookings room
-        io.to(`teacher-bookings:${teacherIdStr}`).emit("booking-updated", populatedBooking);
-        
-        // If approved, emit availability update to teacher
-        if (status === "approved") {
+        if (normalizedStatus === "APPROVED") {
           io.to(`teacher-availability:${teacherIdStr}`).emit("availability-updated");
         }
+      } else {
+        console.error("[Booking] ❌ io is NULL - cannot emit status update events!");
       }
 
-      res.json(booking);
+      // Send push notification to student about booking status change
+      const statusMessages = {
+        APPROVED: "Your booking request has been approved!",
+        REJECTED: "Your booking request was declined.",
+        PENDING: "Your booking request is pending review.",
+      };
+
+      await sendPushNotification(updatedBooking.studentId, {
+        title: "Booking Status Updated",
+        body: statusMessages[normalizedStatus] || `Your booking status changed to ${normalizedStatus}`,
+        data: {
+          type: "booking_status",
+          bookingId: updatedBooking.id,
+          status: normalizedStatus,
+        },
+      });
+
+      res.json(updatedBooking);
     } catch (err) {
+      console.error("Booking status update error:", err);
       res.status(500).json({ message: err.message });
     }
   }
 );
 
 /**
+ * GET /api/bookings/student/me
  * STUDENT: View their own bookings
  */
 router.get(
@@ -247,32 +314,45 @@ router.get(
   roleMiddleware("student"),
   async (req, res) => {
     try {
-      const { page, limit } = req.query;
-      
-      // Pagination parameters
-      const pageNum = parseInt(page) || 1;
-      const limitNum = parseInt(limit) || 20;
-      const skip = (pageNum - 1) * limitNum;
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 20;
+      const skip = (page - 1) * limit;
 
-      // Get total count
-      const totalCount = await Booking.countDocuments({ student: req.user.id });
+      const [bookings, totalCount] = await Promise.all([
+        prisma.booking.findMany({
+          where: { studentId: req.user.id },
+          include: {
+            teacher: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                profileImage: true,
+                instruments: true,
+                location: true,
+                rate: true,
+                about: true,
+                specialties: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        prisma.booking.count({
+          where: { studentId: req.user.id },
+        }),
+      ]);
 
-      // Fetch bookings with pagination
-      const bookings = await Booking.find({ student: req.user.id })
-        .populate("teacher", "name email profileImage")
-        .sort({ createdAt: -1 }) // Most recent first
-        .skip(skip)
-        .limit(limitNum);
-
-      // Calculate pagination info
-      const totalPages = Math.ceil(totalCount / limitNum);
-      const hasMore = pageNum < totalPages;
+      const totalPages = Math.ceil(totalCount / limit);
+      const hasMore = page < totalPages;
 
       res.json({
         bookings,
         pagination: {
-          page: pageNum,
-          limit: limitNum,
+          page,
+          limit,
           total: totalCount,
           totalPages,
           hasMore,
@@ -285,6 +365,7 @@ router.get(
 );
 
 /**
+ * GET /api/bookings/teacher/me
  * TEACHER: View bookings for them
  */
 router.get(
@@ -293,32 +374,40 @@ router.get(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const { page, limit } = req.query;
-      
-      // Pagination parameters
-      const pageNum = parseInt(page) || 1;
-      const limitNum = parseInt(limit) || 20;
-      const skip = (pageNum - 1) * limitNum;
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 20;
+      const skip = (page - 1) * limit;
 
-      // Get total count
-      const totalCount = await Booking.countDocuments({ teacher: req.user.id });
+      const [bookings, totalCount] = await Promise.all([
+        prisma.booking.findMany({
+          where: { teacherId: req.user.id },
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                profileImage: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        prisma.booking.count({
+          where: { teacherId: req.user.id },
+        }),
+      ]);
 
-      // Fetch bookings with pagination
-      const bookings = await Booking.find({ teacher: req.user.id })
-        .populate("student", "name email profileImage")
-        .sort({ createdAt: -1 }) // Most recent first
-        .skip(skip)
-        .limit(limitNum);
-
-      // Calculate pagination info
-      const totalPages = Math.ceil(totalCount / limitNum);
-      const hasMore = pageNum < totalPages;
+      const totalPages = Math.ceil(totalCount / limit);
+      const hasMore = page < totalPages;
 
       res.json({
         bookings,
         pagination: {
-          page: pageNum,
-          limit: limitNum,
+          page,
+          limit,
           total: totalCount,
           totalPages,
           hasMore,
@@ -330,51 +419,67 @@ router.get(
   }
 );
 
-
-// DELETE a booking by ID (for testing or admin use)
+/**
+ * DELETE /api/bookings/:id
+ * Delete a booking (teacher, student, or admin can delete)
+ */
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id);
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            profileImage: true,
+          },
+        },
+        teacher: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
 
     if (!booking) {
       return res.status(404).json({ message: "Booking not found." });
     }
 
-    // Optional: Only allow the teacher or student involved to delete
-    const isOwner =
-      req.user.id === booking.teacher.toString() ||
-      req.user.id === booking.student.toString();
-
+    // Check authorization
+    const isOwner = 
+      req.user.id === booking.teacherId || 
+      req.user.id === booking.studentId;
+    
     if (!isOwner && req.user.role !== "admin") {
       return res.status(403).json({ message: "Not authorized to delete this booking." });
     }
 
-    // Populate booking before deletion for socket emission
-    const populatedBooking = await Booking.findById(booking._id)
-      .populate("student", "name email profileImage")
-      .populate("teacher", "name email profileImage");
+    const bookingStatus = booking.status;
+    const studentId = booking.studentId;
+    const teacherId = booking.teacherId;
 
-    await booking.deleteOne();
+    // Delete booking
+    await prisma.booking.delete({
+      where: { id: req.params.id },
+    });
 
-    // Emit real-time events to notify both student and teacher
-    if (io && populatedBooking) {
-      const studentIdStr = String(populatedBooking.student._id);
-      const teacherIdStr = String(populatedBooking.teacher._id);
-      
-      // Emit to student's personal room
-      io.to(`user:${studentIdStr}`).emit("booking-cancelled", {
-        booking: populatedBooking,
-        cancelledBy: req.user.role, // "teacher" or "student" or "admin"
+    // Emit real-time events
+    if (io) {
+      io.to(`user:${studentId}`).emit("booking-cancelled", {
+        booking: { ...booking, id: req.params.id },
+        cancelledBy: req.user.role,
       });
-      // Also emit to student's bookings room
-      io.to(`student-bookings:${studentIdStr}`).emit("booking-deleted", populatedBooking._id);
+      io.to(`student-bookings:${studentId}`).emit("booking-deleted", req.params.id);
+      io.to(`teacher-bookings:${teacherId}`).emit("booking-deleted", req.params.id);
       
-      // Emit to teacher's bookings room
-      io.to(`teacher-bookings:${teacherIdStr}`).emit("booking-deleted", populatedBooking._id);
-      
-      // If booking was approved, emit availability update to teacher (slot is now free)
-      if (populatedBooking.status === "approved") {
-        io.to(`teacher-availability:${teacherIdStr}`).emit("availability-updated");
+      if (bookingStatus === "APPROVED") {
+        io.to(`teacher-availability:${teacherId}`).emit("availability-updated");
       }
     }
 
@@ -383,7 +488,5 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-
-
 
 export default router;

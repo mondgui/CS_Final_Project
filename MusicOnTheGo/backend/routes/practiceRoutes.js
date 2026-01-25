@@ -1,14 +1,10 @@
-// backend/routes/practiceRoutes.js
+// backend/routes/practiceRoutes.js - Converted to use Prisma
 import express from "express";
-import PracticeSession from "../models/PracticeSession.js";
-import Goal from "../models/Goal.js";
-import Recording from "../models/Recording.js";
-import User from "../models/User.js";
+import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import roleMiddleware from "../middleware/roleMiddleware.js";
 
 const router = express.Router();
-
 
 /**
  * Calculate badges based on student achievements
@@ -29,7 +25,7 @@ function calculateBadges(streak, totalMinutes, totalSessions) {
     badges.push({ emoji: "🎯", text: `${streak}-Day Streak`, variant: "warning" });
   }
 
-  // Total minutes milestones - show only the highest badge with actual numbers
+  // Total minutes milestones
   if (totalMinutes >= 10000) {
     badges.push({ emoji: "🏆", text: `${totalMinutes} minutes`, variant: "success" });
   } else if (totalMinutes >= 5000) {
@@ -44,7 +40,7 @@ function calculateBadges(streak, totalMinutes, totalSessions) {
     badges.push({ emoji: "⏰", text: `${totalMinutes} minutes`, variant: "success" });
   }
 
-  // Encouraging titles based on activity patterns
+  // Encouraging titles
   const encouragingTitles = [
     { condition: totalSessions >= 50 && streak >= 7, emoji: "🌟", text: "Dedicated Learner", variant: "default" },
     { condition: totalSessions >= 30 && streak >= 5, emoji: "🎵", text: "Consistent Performer", variant: "default" },
@@ -56,14 +52,12 @@ function calculateBadges(streak, totalMinutes, totalSessions) {
     { condition: totalSessions >= 15, emoji: "🎵", text: "Regular Practitioner", variant: "default" },
   ];
 
-  // Add the first matching encouraging title (most impressive first)
   for (const title of encouragingTitles) {
     if (title.condition) {
-      // Check if we already have this badge
       const exists = badges.some(b => b.text === title.text);
       if (!exists) {
         badges.push(title);
-        break; // Only add one encouraging title
+        break;
       }
     }
   }
@@ -74,6 +68,7 @@ function calculateBadges(streak, totalMinutes, totalSessions) {
 // ========== PRACTICE SESSIONS ==========
 
 /**
+ * POST /api/practice/sessions
  * STUDENT: Create a practice session
  */
 router.post(
@@ -88,17 +83,18 @@ router.post(
         return res.status(400).json({ message: "Minutes and focus are required." });
       }
 
-      const session = new PracticeSession({
-        student: req.user.id,
-        minutes: parseInt(minutes),
-        focus,
-        notes: notes || "",
-        date: req.body.date ? new Date(req.body.date) : new Date(),
-        startTime: startTime ? new Date(startTime) : new Date(),
-        endTime: endTime ? new Date(endTime) : new Date(),
+      const session = await prisma.practiceSession.create({
+        data: {
+          studentId: req.user.id,
+          minutes: parseInt(minutes),
+          focus,
+          notes: notes || "",
+          date: req.body.date ? new Date(req.body.date) : new Date(),
+          startTime: startTime ? new Date(startTime) : new Date(),
+          endTime: endTime ? new Date(endTime) : null,
+        },
       });
 
-      await session.save();
       res.status(201).json(session);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -107,6 +103,7 @@ router.post(
 );
 
 /**
+ * GET /api/practice/sessions/me
  * STUDENT: Get their own practice sessions
  */
 router.get(
@@ -115,8 +112,10 @@ router.get(
   roleMiddleware("student"),
   async (req, res) => {
     try {
-      const sessions = await PracticeSession.find({ student: req.user.id })
-        .sort({ date: -1 });
+      const sessions = await prisma.practiceSession.findMany({
+        where: { studentId: req.user.id },
+        orderBy: { date: 'desc' },
+      });
       res.json(sessions);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -125,6 +124,7 @@ router.get(
 );
 
 /**
+ * GET /api/practice/sessions/student/:studentId
  * TEACHER: Get practice sessions for a specific student
  */
 router.get(
@@ -133,8 +133,10 @@ router.get(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const sessions = await PracticeSession.find({ student: req.params.studentId })
-        .sort({ date: -1 });
+      const sessions = await prisma.practiceSession.findMany({
+        where: { studentId: req.params.studentId },
+        orderBy: { date: 'desc' },
+      });
       res.json(sessions);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -143,6 +145,7 @@ router.get(
 );
 
 /**
+ * GET /api/practice/stats/me
  * STUDENT: Get practice statistics
  */
 router.get(
@@ -156,94 +159,28 @@ router.get(
       startOfWeek.setDate(now.getDate() - now.getDay());
       startOfWeek.setHours(0, 0, 0, 0);
 
-      const sessions = await PracticeSession.find({
-        student: req.user.id,
-        date: { $gte: startOfWeek },
+      const sessions = await prisma.practiceSession.findMany({
+        where: {
+          studentId: req.user.id,
+          date: { gte: startOfWeek },
+        },
       });
 
       const totalMinutes = sessions.reduce((sum, s) => sum + s.minutes, 0);
       
-      // Get user's weekly goal directly from User model
-      const user = await User.findById(req.user.id);
+      // Get user's weekly goal
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { weeklyGoal: true },
+      });
       const weeklyGoal = user?.weeklyGoal || 0;
       const weeklyProgress = weeklyGoal > 0 ? Math.min((totalMinutes / weeklyGoal) * 100, 100) : 0;
 
-      // Calculate streak (consecutive days with practice)
-      const allSessions = await PracticeSession.find({ student: req.user.id })
-        .sort({ date: -1 });
-      
-      let streak = 0;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      for (let i = 0; i < 30; i++) {
-        const checkDate = new Date(today);
-        checkDate.setDate(today.getDate() - i);
-        checkDate.setHours(0, 0, 0, 0);
-        
-        const nextDay = new Date(checkDate);
-        nextDay.setDate(checkDate.getDate() + 1);
-        
-        const hasPractice = allSessions.some(s => {
-          const sessionDate = new Date(s.date);
-          sessionDate.setHours(0, 0, 0, 0);
-          return sessionDate >= checkDate && sessionDate < nextDay;
-        });
-        
-        if (hasPractice) {
-          streak++;
-        } else if (i > 0) {
-          break; // Break if we hit a day without practice (but allow today to be empty)
-        }
-      }
-
-      // Calculate total lifetime minutes
-      const totalLifetimeMinutes = allSessions.reduce((sum, s) => sum + s.minutes, 0);
-
-      // Calculate badges based on achievements
-      const badges = calculateBadges(streak, totalLifetimeMinutes, allSessions.length);
-
-      res.json({
-        thisWeekMinutes: totalMinutes,
-        weeklyGoal,
-        weeklyProgress,
-        streak,
-        badges,
+      // Calculate streak
+      const allSessions = await prisma.practiceSession.findMany({
+        where: { studentId: req.user.id },
+        orderBy: { date: 'desc' },
       });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
-  }
-);
-
-/**
- * TEACHER: Get practice statistics for a student
- */
-router.get(
-  "/stats/student/:studentId",
-  authMiddleware,
-  roleMiddleware("teacher"),
-  async (req, res) => {
-    try {
-      const now = new Date();
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay());
-      startOfWeek.setHours(0, 0, 0, 0);
-
-      const sessions = await PracticeSession.find({
-        student: req.params.studentId,
-        date: { $gte: startOfWeek },
-      });
-
-      const totalMinutes = sessions.reduce((sum, s) => sum + s.minutes, 0);
-      
-      // Get user's weekly goal directly from User model
-      const user = await User.findById(req.params.studentId);
-      const weeklyGoal = user?.weeklyGoal || 0;
-      const weeklyProgress = weeklyGoal > 0 ? Math.min((totalMinutes / weeklyGoal) * 100, 100) : 0;
-
-      const allSessions = await PracticeSession.find({ student: req.params.studentId })
-        .sort({ date: -1 });
       
       let streak = 0;
       const today = new Date();
@@ -270,10 +207,84 @@ router.get(
         }
       }
 
-      // Calculate total lifetime minutes
       const totalLifetimeMinutes = allSessions.reduce((sum, s) => sum + s.minutes, 0);
+      const badges = calculateBadges(streak, totalLifetimeMinutes, allSessions.length);
 
-      // Calculate badges based on achievements
+      res.json({
+        thisWeekMinutes: totalMinutes,
+        weeklyGoal,
+        weeklyProgress,
+        streak,
+        badges,
+      });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+/**
+ * GET /api/practice/stats/student/:studentId
+ * TEACHER: Get practice statistics for a student
+ */
+router.get(
+  "/stats/student/:studentId",
+  authMiddleware,
+  roleMiddleware("teacher"),
+  async (req, res) => {
+    try {
+      const now = new Date();
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      const sessions = await prisma.practiceSession.findMany({
+        where: {
+          studentId: req.params.studentId,
+          date: { gte: startOfWeek },
+        },
+      });
+
+      const totalMinutes = sessions.reduce((sum, s) => sum + s.minutes, 0);
+      
+      const user = await prisma.user.findUnique({
+        where: { id: req.params.studentId },
+        select: { weeklyGoal: true },
+      });
+      const weeklyGoal = user?.weeklyGoal || 0;
+      const weeklyProgress = weeklyGoal > 0 ? Math.min((totalMinutes / weeklyGoal) * 100, 100) : 0;
+
+      const allSessions = await prisma.practiceSession.findMany({
+        where: { studentId: req.params.studentId },
+        orderBy: { date: 'desc' },
+      });
+      
+      let streak = 0;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      for (let i = 0; i < 30; i++) {
+        const checkDate = new Date(today);
+        checkDate.setDate(today.getDate() - i);
+        checkDate.setHours(0, 0, 0, 0);
+        
+        const nextDay = new Date(checkDate);
+        nextDay.setDate(checkDate.getDate() + 1);
+        
+        const hasPractice = allSessions.some(s => {
+          const sessionDate = new Date(s.date);
+          sessionDate.setHours(0, 0, 0, 0);
+          return sessionDate >= checkDate && sessionDate < nextDay;
+        });
+        
+        if (hasPractice) {
+          streak++;
+        } else if (i > 0) {
+          break;
+        }
+      }
+
+      const totalLifetimeMinutes = allSessions.reduce((sum, s) => sum + s.minutes, 0);
       const badges = calculateBadges(streak, totalLifetimeMinutes, allSessions.length);
 
       res.json({
@@ -292,6 +303,7 @@ router.get(
 // ========== GOALS ==========
 
 /**
+ * POST /api/practice/goals
  * STUDENT: Create a goal
  */
 router.post(
@@ -306,16 +318,17 @@ router.post(
         return res.status(400).json({ message: "Title, category, and target date are required." });
       }
 
-      const goal = new Goal({
-        student: req.user.id,
-        title,
-        category,
-        targetDate: new Date(targetDate),
-        progress: progress || 0,
-        weeklyMinutes: weeklyMinutes || 0,
+      const goal = await prisma.goal.create({
+        data: {
+          studentId: req.user.id,
+          title,
+          category,
+          targetDate: new Date(targetDate),
+          progress: progress || 0,
+          weeklyMinutes: weeklyMinutes || 0,
+        },
       });
 
-      await goal.save();
       res.status(201).json(goal);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -324,6 +337,7 @@ router.post(
 );
 
 /**
+ * GET /api/practice/goals/me
  * STUDENT: Get their own goals
  */
 router.get(
@@ -332,8 +346,10 @@ router.get(
   roleMiddleware("student"),
   async (req, res) => {
     try {
-      const goals = await Goal.find({ student: req.user.id })
-        .sort({ createdAt: -1 });
+      const goals = await prisma.goal.findMany({
+        where: { studentId: req.user.id },
+        orderBy: { createdAt: 'desc' },
+      });
       res.json(goals);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -342,6 +358,7 @@ router.get(
 );
 
 /**
+ * PUT /api/practice/goals/:id
  * STUDENT: Update a goal
  */
 router.put(
@@ -350,25 +367,32 @@ router.put(
   roleMiddleware("student"),
   async (req, res) => {
     try {
-      const goal = await Goal.findById(req.params.id);
+      const goal = await prisma.goal.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!goal) {
         return res.status(404).json({ message: "Goal not found." });
       }
 
-      if (goal.student.toString() !== req.user.id) {
+      if (goal.studentId !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      if (req.body.progress !== undefined) goal.progress = req.body.progress;
-      if (req.body.completed !== undefined) goal.completed = req.body.completed;
-      if (req.body.title !== undefined) goal.title = req.body.title;
-      if (req.body.category !== undefined) goal.category = req.body.category;
-      if (req.body.targetDate !== undefined) goal.targetDate = new Date(req.body.targetDate);
-      if (req.body.weeklyMinutes !== undefined) goal.weeklyMinutes = req.body.weeklyMinutes;
+      const updateData = {};
+      if (req.body.progress !== undefined) updateData.progress = req.body.progress;
+      if (req.body.completed !== undefined) updateData.completed = req.body.completed;
+      if (req.body.title !== undefined) updateData.title = req.body.title;
+      if (req.body.category !== undefined) updateData.category = req.body.category;
+      if (req.body.targetDate !== undefined) updateData.targetDate = new Date(req.body.targetDate);
+      if (req.body.weeklyMinutes !== undefined) updateData.weeklyMinutes = req.body.weeklyMinutes;
 
-      await goal.save();
-      res.json(goal);
+      const updatedGoal = await prisma.goal.update({
+        where: { id: req.params.id },
+        data: updateData,
+      });
+
+      res.json(updatedGoal);
     } catch (err) {
       res.status(500).json({ message: err.message });
     }
@@ -376,6 +400,7 @@ router.put(
 );
 
 /**
+ * DELETE /api/practice/goals/:id
  * STUDENT: Delete a goal
  */
 router.delete(
@@ -384,17 +409,22 @@ router.delete(
   roleMiddleware("student"),
   async (req, res) => {
     try {
-      const goal = await Goal.findById(req.params.id);
+      const goal = await prisma.goal.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!goal) {
         return res.status(404).json({ message: "Goal not found." });
       }
 
-      if (goal.student.toString() !== req.user.id) {
+      if (goal.studentId !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized." });
       }
 
-      await Goal.findByIdAndDelete(req.params.id);
+      await prisma.goal.delete({
+        where: { id: req.params.id },
+      });
+
       res.json({ message: "Goal deleted successfully." });
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -403,6 +433,7 @@ router.delete(
 );
 
 /**
+ * GET /api/practice/goals/student/:studentId
  * TEACHER: Get goals for a specific student
  */
 router.get(
@@ -411,8 +442,10 @@ router.get(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const goals = await Goal.find({ student: req.params.studentId })
-        .sort({ createdAt: -1 });
+      const goals = await prisma.goal.findMany({
+        where: { studentId: req.params.studentId },
+        orderBy: { createdAt: 'desc' },
+      });
       res.json(goals);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -423,6 +456,7 @@ router.get(
 // ========== RECORDINGS ==========
 
 /**
+ * POST /api/practice/recordings
  * STUDENT: Create a recording
  */
 router.post(
@@ -437,16 +471,17 @@ router.post(
         return res.status(400).json({ message: "Title is required." });
       }
 
-      const recording = new Recording({
-        student: req.user.id,
-        teacher: teacher || null,
-        title,
-        fileUrl: fileUrl || "",
-        duration: duration || "",
-        studentNotes: studentNotes || "",
+      const recording = await prisma.recording.create({
+        data: {
+          studentId: req.user.id,
+          teacherId: teacher || null,
+          title,
+          fileUrl: fileUrl || "",
+          duration: duration || "",
+          studentNotes: studentNotes || "",
+        },
       });
 
-      await recording.save();
       res.status(201).json(recording);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -455,6 +490,7 @@ router.post(
 );
 
 /**
+ * GET /api/practice/recordings/me
  * STUDENT: Get their own recordings
  */
 router.get(
@@ -463,9 +499,19 @@ router.get(
   roleMiddleware("student"),
   async (req, res) => {
     try {
-      const recordings = await Recording.find({ student: req.user.id })
-        .populate("teacher", "name email")
-        .sort({ createdAt: -1 });
+      const recordings = await prisma.recording.findMany({
+        where: { studentId: req.user.id },
+        include: {
+          teacher: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
       res.json(recordings);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -474,6 +520,7 @@ router.get(
 );
 
 /**
+ * GET /api/practice/recordings/student/:studentId
  * TEACHER: Get recordings for a specific student
  */
 router.get(
@@ -482,9 +529,19 @@ router.get(
   roleMiddleware("teacher"),
   async (req, res) => {
     try {
-      const recordings = await Recording.find({ student: req.params.studentId })
-        .populate("student", "name email")
-        .sort({ createdAt: -1 });
+      const recordings = await prisma.recording.findMany({
+        where: { studentId: req.params.studentId },
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
       res.json(recordings);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -493,6 +550,7 @@ router.get(
 );
 
 /**
+ * PUT /api/practice/recordings/:id/feedback
  * TEACHER: Add feedback to a recording
  */
 router.put(
@@ -502,30 +560,37 @@ router.put(
   async (req, res) => {
     try {
       const { teacherFeedback } = req.body;
-      const recording = await Recording.findById(req.params.id);
+      const recording = await prisma.recording.findUnique({
+        where: { id: req.params.id },
+      });
 
       if (!recording) {
         return res.status(404).json({ message: "Recording not found." });
       }
 
-      // Check if teacher is assigned to this recording or has bookings with the student
-      const Booking = (await import("../models/Booking.js")).default;
-      const hasBooking = await Booking.findOne({
-        teacher: req.user.id,
-        student: recording.student,
-        status: "approved",
+      // Check if teacher has bookings with the student
+      const hasBooking = await prisma.booking.findFirst({
+        where: {
+          teacherId: req.user.id,
+          studentId: recording.studentId,
+          status: "APPROVED",
+        },
       });
 
-      if (!hasBooking && recording.teacher?.toString() !== req.user.id) {
+      if (!hasBooking && recording.teacherId !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized. You must be the student's teacher." });
       }
 
-      recording.teacherFeedback = teacherFeedback || "";
-      recording.hasTeacherFeedback = true;
-      recording.teacher = req.user.id;
+      const updatedRecording = await prisma.recording.update({
+        where: { id: req.params.id },
+        data: {
+          teacherFeedback: teacherFeedback || "",
+          hasTeacherFeedback: true,
+          teacherId: req.user.id,
+        },
+      });
 
-      await recording.save();
-      res.json(recording);
+      res.json(updatedRecording);
     } catch (err) {
       res.status(500).json({ message: err.message });
     }
@@ -533,4 +598,3 @@ router.put(
 );
 
 export default router;
-

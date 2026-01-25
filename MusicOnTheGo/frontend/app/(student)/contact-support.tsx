@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,40 +17,93 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Button } from "../../components/ui/button";
+import { api } from "../../lib/api";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 export default function ContactSupportScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  
+  // Load current user if logged in
+  const { data: currentUser } = useQuery({
+    queryKey: ["contact-user"],
+    queryFn: async () => {
+      try {
+        return await api("/api/users/me", { auth: true });
+      } catch {
+        return null; // User not logged in or token invalid
+      }
+    },
+    retry: false,
+  });
+
   const [formData, setFormData] = useState({
-    name: "",
-    email: "",
+    name: currentUser?.name || "",
+    email: currentUser?.email || "",
     queryType: "",
     subject: "",
     message: "",
   });
 
-  const [showSuccess, setShowSuccess] = useState(false);
+  // Update form when user data loads
+  useEffect(() => {
+    if (currentUser) {
+      setFormData(prev => ({
+        ...prev,
+        name: currentUser.name || prev.name,
+        email: currentUser.email || prev.email,
+      }));
+    }
+  }, [currentUser]);
 
-  const handleSubmit = () => {
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
     // Basic validation
     if (!formData.name || !formData.email || !formData.queryType || !formData.subject || !formData.message) {
       Alert.alert("Error", "Please fill in all required fields");
       return;
     }
 
-    // Show success message
-    setShowSuccess(true);
+    setLoading(true);
 
-    // Reset form after 3 seconds
-    setTimeout(() => {
-      setShowSuccess(false);
-      setFormData({
-        name: "",
-        email: "",
-        queryType: "",
-        subject: "",
-        message: "",
+    try {
+      // Send support ticket to backend
+      // Token will be sent automatically if user is logged in (defaults to auth: true)
+      // Backend handles both authenticated and anonymous users
+      await api("/api/support/contact", {
+        method: "POST",
+        body: {
+          name: formData.name,
+          email: formData.email,
+          queryType: formData.queryType,
+          subject: formData.subject,
+          message: formData.message,
+        },
       });
-    }, 3000);
+
+      // Show success alert and navigate back to settings
+      Alert.alert(
+        "Message Sent",
+        "Your message has been sent! We'll get back to you within 24-48 hours.",
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              // Navigate back to settings
+              router.back();
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "Failed to send message. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -84,16 +138,6 @@ export default function ContactSupportScreen() {
         </LinearGradient>
 
         <View style={styles.content}>
-          {/* Success Message */}
-          {showSuccess && (
-            <Card style={styles.successCard}>
-              <Text style={styles.successText}>
-                ✓ Your message has been sent! We'll get back to you within
-                24-48 hours.
-              </Text>
-            </Card>
-          )}
-
           <Card style={styles.formCard}>
             {/* Name */}
             <View style={styles.formField}>
@@ -187,13 +231,20 @@ export default function ContactSupportScreen() {
               style={styles.submitButton}
               onPress={handleSubmit}
               activeOpacity={0.8}
+              disabled={loading}
             >
               <LinearGradient
-                colors={["#FF9076", "#FF6A5C"]}
+                colors={loading ? ["#CCC", "#AAA"] : ["#FF9076", "#FF6A5C"]}
                 style={styles.submitButtonGradient}
               >
-                <Text style={styles.submitButtonText}>Send Message</Text>
-                <Ionicons name="send" size={20} color="white" style={styles.sendIcon} />
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <>
+                    <Text style={styles.submitButtonText}>Send Message</Text>
+                    <Ionicons name="send" size={20} color="white" style={styles.sendIcon} />
+                  </>
+                )}
               </LinearGradient>
             </TouchableOpacity>
           </Card>
@@ -281,18 +332,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     gap: 16,
-  },
-  successCard: {
-    padding: 16,
-    backgroundColor: "#D6FFE1",
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
-  },
-  successText: {
-    fontSize: 14,
-    color: "#059669",
-    textAlign: "center",
-    lineHeight: 20,
   },
   formCard: {
     padding: 24,

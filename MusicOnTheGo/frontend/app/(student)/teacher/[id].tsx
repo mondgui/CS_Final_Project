@@ -22,7 +22,8 @@ import { initSocket, getSocket } from "../../../lib/socket";
 import type { Socket } from "socket.io-client";
 
 type Teacher = {
-  _id: string;
+  id: string;
+  _id?: string; // Support legacy format during transition
   name: string;
   email: string;
   instruments: string[];
@@ -37,10 +38,12 @@ type Teacher = {
 };
 
 type Review = {
-  _id: string;
+  id: string;
+  _id?: string; // Support legacy format during transition
   teacher: string;
   student: {
-    _id: string;
+    id: string;
+    _id?: string; // Support legacy format during transition
     name: string;
     profileImage?: string;
   };
@@ -98,11 +101,14 @@ export default function TeacherProfileScreen() {
       const bookings = await api("/api/bookings/student/me", { auth: true });
       const bookingsArray = bookings?.bookings || bookings || [];
       const hasBookingWithTeacher = bookingsArray.some((booking: any) => {
-        const bookingTeacherId = booking.teacher?._id || booking.teacher;
-        return String(bookingTeacherId) === String(teacherId) && booking.status === "approved";
+        const bookingTeacherId = booking.teacher?.id || booking.teacher?._id || booking.teacher;
+        // Check for both uppercase (Prisma enum) and lowercase status
+        const status = booking.status?.toUpperCase();
+        return String(bookingTeacherId) === String(teacherId) && status === "APPROVED";
       });
       setHasBooking(hasBookingWithTeacher);
     } catch (err: any) {
+      console.log("Error checking booking:", err.message);
       setHasBooking(false);
     }
   }, [teacherId]);
@@ -144,7 +150,7 @@ export default function TeacherProfileScreen() {
   const fetchTeacher = useCallback(async () => {
     if (!teacherId) return;
     try {
-      const data = await api(`/api/teachers/${teacherId}`);
+      const data = await api(`/api/users/teachers/${teacherId}`);
       setTeacher(data);
     } catch (err: any) {
       console.log("Teacher fetch error:", err.message);
@@ -283,39 +289,59 @@ export default function TeacherProfileScreen() {
 
   // Initialize Socket.io for real-time availability updates
   useEffect(() => {
+    if (!teacherId) return;
+
     let mounted = true;
     let socketInstance: Socket | null = null;
+    let connectHandler: (() => void) | null = null;
 
     async function setupSocket() {
       try {
         socketInstance = await initSocket();
-        if (socketInstance && mounted && teacherId) {
+        if (!socketInstance || !mounted || !teacherId) return;
 
-          // Join this teacher's availability room so we get real-time updates
-          socketInstance.emit("join-teacher-availability", teacherId);
+        const availabilityUpdatedHandler = () => {
+          if (mounted) {
+            fetchAvailability();
+          }
+        };
 
-          // Listen for availability updates
-          socketInstance.on("availability-updated", () => {
-            if (mounted) {
-              fetchAvailability();
-            }
-          });
+        const setupListeners = () => {
+          if (!socketInstance || !mounted || !teacherId) return;
+
+          socketInstance.removeAllListeners("availability-updated");
+          // Ensure teacherId is a string for room joining
+          const teacherIdStr = String(teacherId);
+          socketInstance.emit("join-availability-for-teacher", teacherIdStr);
+          socketInstance.on("availability-updated", availabilityUpdatedHandler);
+        };
+
+        // Set up listeners immediately if connected
+        if (socketInstance.connected) {
+          setupListeners();
+        } else {
+          // If not connected, wait for connection first
+          socketInstance.once("connect", setupListeners);
         }
+
+        // Set up on connect/reconnect to ensure listeners persist
+        connectHandler = setupListeners;
+        socketInstance.on("connect", connectHandler);
       } catch (error) {
         // Silent fail – availability will still refresh on focus
       }
     }
 
-    if (teacherId) {
-      setupSocket();
-    }
+    setupSocket();
 
     return () => {
       mounted = false;
       if (socketInstance && teacherId) {
-        // Leave this teacher's availability room when unmounting
-        socketInstance.emit("leave-teacher-availability", teacherId);
-        socketInstance.off("availability-updated");
+        if (connectHandler) {
+          socketInstance.off("connect", connectHandler);
+        }
+        socketInstance.emit("leave-availability-for-teacher", String(teacherId));
+        socketInstance.removeAllListeners("availability-updated");
       }
     };
   }, [teacherId, fetchAvailability]);
@@ -345,7 +371,7 @@ export default function TeacherProfileScreen() {
   }
 
   const handleBookLesson = (slot?: AvailabilitySlot) => {
-    const params: any = { teacherId: teacher?._id };
+    const params: any = { teacherId: teacher?.id || teacher?._id };
     
     // If a specific slot was clicked, pass the day and time information
     if (slot) {
@@ -377,7 +403,7 @@ export default function TeacherProfileScreen() {
       router.push({
         pathname: "/chat/[id]",
         params: { 
-          id: teacher?._id,
+          id: teacher?.id || teacher?._id || "",
           contactName: teacher?.name || "Teacher",
           contactRole: "teacher"
         },
@@ -385,7 +411,7 @@ export default function TeacherProfileScreen() {
     } else {
       router.push({
         pathname: "/booking/contact-detail",
-        params: { teacherId: teacher?._id },
+        params: { teacherId: teacher?.id || teacher?._id },
       });
     }
   };
@@ -532,7 +558,7 @@ export default function TeacherProfileScreen() {
           <Card style={styles.reviewsCard}>
             <View style={styles.reviewsHeader}>
               <Text style={styles.cardTitle}>Reviews</Text>
-              {hasBooking && (
+              {hasBooking && reviews.length > 0 && (
                 <Button
                   size="sm"
                   onPress={() => setShowReviewDialog(true)}
@@ -546,13 +572,29 @@ export default function TeacherProfileScreen() {
             {loadingReviews ? (
               <ActivityIndicator color="#FF6A5C" style={{ marginTop: 16 }} />
             ) : reviews.length === 0 ? (
-              <Text style={styles.noReviewsText}>
-                No reviews yet. Be the first to review this teacher!
-              </Text>
+              <View style={styles.noReviewsContainer}>
+                <Text style={styles.noReviewsText}>
+                  No reviews yet. Be the first to review this teacher!
+                </Text>
+                {hasBooking && (
+                  <Button
+                    size="sm"
+                    onPress={() => setShowReviewDialog(true)}
+                    style={styles.writeReviewButtonInEmpty}
+                  >
+                    {myReview ? "Edit Review" : "Write Review"}
+                  </Button>
+                )}
+                {!hasBooking && (
+                  <Text style={styles.noBookingHint}>
+                    Book a lesson with this teacher to leave a review
+                  </Text>
+                )}
+              </View>
             ) : (
               <View style={styles.reviewsList}>
                 {reviews.map((review) => (
-                  <View key={review._id} style={styles.reviewItem}>
+                  <View key={review.id || review._id} style={styles.reviewItem}>
                     <View style={styles.reviewHeader}>
                       <Avatar
                         src={review.student?.profileImage}
@@ -947,12 +989,27 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 8,
   },
+  noReviewsContainer: {
+    paddingVertical: 16,
+    alignItems: "center",
+    gap: 12,
+  },
   noReviewsText: {
     fontSize: 14,
     color: "#999",
     textAlign: "center",
-    paddingVertical: 16,
     fontStyle: "italic",
+  },
+  writeReviewButtonInEmpty: {
+    minWidth: 120,
+    marginTop: 8,
+  },
+  noBookingHint: {
+    fontSize: 12,
+    color: "#999",
+    textAlign: "center",
+    fontStyle: "italic",
+    marginTop: 4,
   },
   dialogTitleText: {
     fontSize: 20,

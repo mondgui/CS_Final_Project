@@ -16,12 +16,14 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { api } from "../../../lib/api";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { initSocket, getSocket } from "../../../lib/socket";
+import { initSocket } from "../../../lib/socket";
+import { getSupabaseClient } from "../../../lib/supabase";
 import type { Socket } from "socket.io-client";
 
 import ScheduleBookingsTab, { type Booking } from "./_tabs/ScheduleBookingsTab";
 import TimesTab from "./_tabs/TimesTab";
 import AnalyticsTab from "./_tabs/AnalyticsTab";
+import ReviewsTab from "./_tabs/ReviewsTab";
 import SettingsTab from "./_tabs/SettingsTab";
 
 type TabKey = "home" | "bookings" | "settings";
@@ -54,6 +56,47 @@ export default function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [innerTab, setInnerTab] = useState<string>("schedule-bookings");
   
+  // Fetch unread message count
+  const { data: unreadMessagesCount, refetch: refetchUnreadMessages } = useQuery({
+    queryKey: ["unread-messages-count"],
+    queryFn: async () => {
+      try {
+        const response = await api("/api/messages/unread-count", { auth: true });
+        return response?.count || 0;
+      } catch {
+        return 0;
+      }
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  // Fetch unread inquiries count for teachers
+  const { data: unreadInquiriesCount, refetch: refetchUnreadInquiries } = useQuery({
+    queryKey: ["unread-inquiries-count"],
+    queryFn: async () => {
+      try {
+        const inquiries = await api("/api/inquiries/teacher/me", { auth: true });
+        const inquiriesList = Array.isArray(inquiries) ? inquiries : [];
+        // Count inquiries with status "sent" (unread)
+        return inquiriesList.filter((inq: any) => inq.status === "sent").length;
+      } catch {
+        return 0;
+      }
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  // Refetch unread counts when screen comes into focus (e.g., returning from chat)
+  useFocusEffect(
+    React.useCallback(() => {
+      refetchUnreadMessages();
+      refetchUnreadInquiries();
+    }, [refetchUnreadMessages, refetchUnreadInquiries])
+  );
+
+  // Calculate total unread count (messages + inquiries)
+  const totalUnreadCount = (unreadMessagesCount || 0) + (unreadInquiriesCount || 0);
+
   // Get the tab parameter from query string
   const getTabParam = (): string => {
     const tab = params.tab;
@@ -162,7 +205,7 @@ export default function TeacherDashboard() {
     },
   });
 
-  const userId = user?._id || user?.id || null;
+  const userId = user?.id || user?._id || null;
 
   // Header subtitle personalization for teachers
   const teacherInstrumentsArray = Array.isArray(user?.instruments)
@@ -210,27 +253,37 @@ export default function TeacherDashboard() {
       const currentUser = queryClient.getQueryData(["teacher-user"]) as any;
       const transformed: Booking[] = (Array.isArray(data) ? data : []).map((booking: any) => {
         // Convert backend status to frontend status
+        // Prisma enum returns uppercase: PENDING, APPROVED, REJECTED
+        const bookingStatus = (booking.status || "").toUpperCase();
         let status: "Confirmed" | "Pending" | "Rejected" = "Pending";
-        if (booking.status === "approved") {
+        if (bookingStatus === "APPROVED") {
           status = "Confirmed";
-        } else if (booking.status === "pending") {
+        } else if (bookingStatus === "PENDING") {
           status = "Pending";
-        } else {
+        } else if (bookingStatus === "REJECTED") {
           status = "Rejected";
         }
         
+        // Backend returns startTime/endTime directly (not in timeSlot object)
+        const timeSlot = booking.timeSlot || {
+          start: booking.startTime || "",
+          end: booking.endTime || "",
+        };
+        
         return {
-          _id: booking._id,
+          id: booking.id || booking._id,
+          _id: booking.id || booking._id, // Legacy support
           studentName: booking.student?.name || "Student",
           instrument: currentUser?.instruments?.[0] || "Music",
           date: formatDay(booking.day),
-          time: formatTimeSlot(booking.timeSlot),
+          time: formatTimeSlot(timeSlot),
           status,
           originalDay: booking.day,
         };
       });
       
-      // Sort bookings
+      // Sort bookings (status priority, then by date)
+      // Note: transformed array already contains bookings in creation order from backend
       const sorted = transformed.sort((a: any, b: any) => {
         const statusPriority: { [key: string]: number } = {
           "Pending": 0,
@@ -239,9 +292,8 @@ export default function TeacherDashboard() {
         };
         const statusDiff = statusPriority[a.status] - statusPriority[b.status];
         if (statusDiff !== 0) return statusDiff;
-        const dateA = new Date(a.createdAt).getTime();
-        const dateB = new Date(b.createdAt).getTime();
-        return dateB - dateA;
+        // If statuses are the same, maintain backend order (already sorted by createdAt desc)
+        return 0;
       });
 
       return {
@@ -271,50 +323,119 @@ export default function TeacherDashboard() {
 
   // Initialize Socket.io for real-time booking updates
   useEffect(() => {
+    if (!userId) return; // Wait for userId to be available
+
     let mounted = true;
     let socketInstance: Socket | null = null;
+    let connectHandler: (() => void) | null = null;
 
     async function setupSocket() {
       try {
         socketInstance = await initSocket();
-        if (socketInstance && mounted && userId) {
-          // Join teacher bookings room
+        if (!socketInstance || !mounted) return;
+
+        const bookingRequestHandler = () => {
+          if (mounted) {
+            queryClient.invalidateQueries({ queryKey: ["teacher-bookings", userId] });
+            refetchBookings();
+          }
+        };
+
+        const bookingUpdatedHandler = () => {
+          if (mounted) {
+            queryClient.invalidateQueries({ queryKey: ["teacher-bookings", userId] });
+            refetchBookings();
+          }
+        };
+
+        const setupListeners = () => {
+          if (!socketInstance || !mounted || !userId) return;
+          
+          socketInstance.removeAllListeners("new-booking-request");
+          socketInstance.removeAllListeners("booking-updated");
+          socketInstance.removeAllListeners("availability-updated");
+
           socketInstance.emit("join-teacher-bookings");
-
-          // Listen for new booking requests
-          socketInstance.on("new-booking-request", () => {
+          socketInstance.emit("join-teacher-availability");
+          socketInstance.on("new-booking-request", bookingRequestHandler);
+          socketInstance.on("booking-updated", bookingUpdatedHandler);
+          socketInstance.on("availability-updated", () => {
             if (mounted) {
-              queryClient.invalidateQueries({ queryKey: ["teacher-bookings"] });
-              refetchBookings();
+              queryClient.invalidateQueries({ queryKey: ["availability-me"] });
             }
           });
+        };
 
-          // Listen for booking updates
-          socketInstance.on("booking-updated", () => {
-            if (mounted) {
-              queryClient.invalidateQueries({ queryKey: ["teacher-bookings"] });
-              refetchBookings();
-            }
-          });
+        // Set up listeners immediately if connected
+        if (socketInstance.connected) {
+          setupListeners();
+        }
+
+        // Set up on connect/reconnect to ensure listeners persist
+        connectHandler = setupListeners;
+        socketInstance.on("connect", connectHandler);
+        
+        // Also use once to catch immediate connection
+        if (!socketInstance.connected) {
+          socketInstance.once("connect", setupListeners);
         }
       } catch (error) {
         console.warn("[Teacher Dashboard] Socket setup failed (non-critical):", error);
       }
     }
 
-    if (userId) {
-      setupSocket();
-    }
+    setupSocket();
 
     return () => {
       mounted = false;
       if (socketInstance) {
         socketInstance.emit("leave-teacher-bookings");
-        socketInstance.off("new-booking-request");
-        socketInstance.off("booking-updated");
+        if (connectHandler) {
+          socketInstance.off("connect", connectHandler);
+        }
+        socketInstance.removeAllListeners("new-booking-request");
+        socketInstance.removeAllListeners("booking-updated");
+        socketInstance.removeAllListeners("availability-updated");
       }
     };
   }, [userId, queryClient, refetchBookings]);
+
+  // Supabase Realtime: invalidate unread message count on new message or mark-as-read
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    let channel: { unsubscribe: () => void } | null = null;
+
+    (async () => {
+      try {
+        const supabaseClient = await getSupabaseClient();
+        channel = supabaseClient
+          .channel("teacher-unread")
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "Message" }, (payload) => {
+            if (!mounted) return;
+            const row = payload.new as any;
+            if (String(row.recipientId) === String(userId)) {
+              queryClient.invalidateQueries({ queryKey: ["unread-messages-count"] });
+            }
+          })
+          .on("postgres_changes", { event: "UPDATE", schema: "public", table: "Message" }, (payload) => {
+            if (!mounted) return;
+            const row = payload.new as any;
+            if (String(row.recipientId) === String(userId) && row.read) {
+              queryClient.invalidateQueries({ queryKey: ["unread-messages-count"] });
+            }
+          })
+          .subscribe();
+      } catch (e) {
+        if (mounted) console.warn("[Teacher Dashboard] Supabase Realtime (unread):", e);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      if (channel) channel.unsubscribe();
+    };
+  }, [userId, queryClient]);
 
   // Refresh bookings when screen comes into focus
   useFocusEffect(
@@ -428,6 +549,13 @@ export default function TeacherDashboard() {
                 onPress={() => router.push("/messages")}
               >
                 <Ionicons name="chatbubbles-outline" size={24} color="white" />
+                {totalUnreadCount > 0 ? (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {totalUnreadCount > 99 ? "99+" : String(totalUnreadCount)}
+                    </Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
             </View>
           </View>
@@ -438,6 +566,7 @@ export default function TeacherDashboard() {
           {activeTab === "home" && (
             <HomeTabContent
               user={user}
+              userId={userId}
               availabilityData={availabilityData}
               defaultTab={innerTab}
               bookings={bookings}
@@ -475,6 +604,7 @@ export default function TeacherDashboard() {
 // Home Tab Content Component
 type HomeTabContentProps = {
   user: any;
+  userId: string | null;
   availabilityData: AvailabilityDay[];
   defaultTab?: string;
   bookings: any[];
@@ -489,6 +619,7 @@ type HomeTabContentProps = {
 
 function HomeTabContent({
   user,
+  userId,
   availabilityData,
   defaultTab = "schedule-bookings",
   bookings,
@@ -551,6 +682,7 @@ function HomeTabContent({
             <TabsTrigger value="schedule-bookings">Schedule</TabsTrigger>
             <TabsTrigger value="times">Times</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="reviews">Reviews</TabsTrigger>
             {/* Bookings tab removed - merged into Schedule tab */}
           </TabsList>
 
@@ -576,6 +708,10 @@ function HomeTabContent({
               bookings={bookings}
               user={user}
             />
+          </TabsContent>
+
+          <TabsContent value="reviews">
+            <ReviewsTab teacherId={userId || undefined} />
           </TabsContent>
         </Tabs>
       </View>
@@ -697,6 +833,26 @@ const styles = StyleSheet.create({
   headerIconButton: {
     padding: 8,
     borderRadius: 8,
+    position: "relative",
+  },
+  badge: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    backgroundColor: "#FF4444",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "white",
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "700",
   },
   contentWrapper: {
     paddingHorizontal: 20,

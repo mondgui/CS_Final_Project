@@ -3,6 +3,7 @@
 // frontend/lib/auth.ts
 import { storage } from "./storage";
 import { disconnectSocket } from "./socket";
+import { registerForPushNotifications, unregisterPushToken } from "./notifications";
 
 const TOKEN_KEY = "token";
 const USER_KEY = "user";
@@ -20,6 +21,12 @@ export async function saveAuth(token: string, user: AuthUser) {
   disconnectSocket();
   await storage.setItem(TOKEN_KEY, token);
   await storage.setItem(USER_KEY, JSON.stringify(user));
+  
+  // Register for push notifications after successful login
+  // This will request permissions if not already granted
+  registerForPushNotifications().catch(() => {
+    // Silently fail - notifications are optional
+  });
 }
 
 // Read token (api.ts already uses storage directly, but this keeps it DRY)
@@ -42,6 +49,10 @@ export async function getStoredUser(): Promise<AuthUser | null> {
 export async function clearAuth() {
   // Disconnect socket on logout
   disconnectSocket();
+  
+  // Unregister push notification token
+  await unregisterPushToken();
+  
   await storage.removeItem(TOKEN_KEY);
   await storage.removeItem(USER_KEY);
 }

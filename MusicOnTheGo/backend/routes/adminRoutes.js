@@ -1,35 +1,25 @@
-// backend/routes/adminRoutes.js
+// backend/routes/adminRoutes.js - Converted to use Prisma
 import express from "express";
+import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
-import roleMiddleware from "../middleware/roleMiddleware.js";
-import User from "../models/User.js";
-import Booking from "../models/Booking.js";
-import Message from "../models/Message.js";
-import PracticeSession from "../models/PracticeSession.js";
-import CommunityPost from "../models/CommunityPost.js";
-import Resource from "../models/Resource.js";
+// import roleMiddleware from "../middleware/roleMiddleware.js";
 
 const router = express.Router();
 
-// All admin routes require authentication and admin role
-// Note: You'll need to add "admin" to the User model role enum
-
 /**
  * GET /api/admin/stats
- * Get dashboard statistics - User-focused metrics
+ * Get dashboard statistics
  */
 router.get(
   "/stats",
   authMiddleware,
-  // roleMiddleware("admin"), // Uncomment when admin role is added
   async (req, res) => {
     try {
-      const { timeRange = '30days' } = req.query; // Default to 30 days
+      const { timeRange = '30days' } = req.query;
       const now = new Date();
       
-      // Calculate time range in days
       let days = 30;
-      let aggregationUnit = 'day'; // 'day' or 'week' or 'month'
+      let aggregationUnit = 'day';
       
       switch (timeRange) {
         case '7days':
@@ -52,9 +42,6 @@ router.get(
           days = 365;
           aggregationUnit = 'month';
           break;
-        default:
-          days = 30;
-          aggregationUnit = 'day';
       }
       
       const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
@@ -74,188 +61,170 @@ router.get(
         totalResources,
         totalCommunityPosts,
       ] = await Promise.all([
-        User.countDocuments(),
-        User.countDocuments({ role: "student" }),
-        User.countDocuments({ role: "teacher" }),
-        Booking.countDocuments(),
-        Booking.countDocuments({ status: "pending" }),
-        Booking.countDocuments({ status: "approved" }),
-        Message.countDocuments(),
-        PracticeSession.countDocuments(),
-        Resource.countDocuments(),
-        CommunityPost.countDocuments(),
+        prisma.user.count(),
+        prisma.user.count({ where: { role: "student" } }),
+        prisma.user.count({ where: { role: "teacher" } }),
+        prisma.booking.count(),
+        prisma.booking.count({ where: { status: "PENDING" } }),
+        prisma.booking.count({ where: { status: "APPROVED" } }),
+        prisma.message.count(),
+        prisma.practiceSession.count(),
+        prisma.resource.count(),
+        prisma.communityPost.count(),
       ]);
 
-      // User growth over time (based on timeRange) - Using aggregation for performance
+      // User growth over time
       const userGrowthData = [];
-      
+      // Query all users created since startDate (no upper limit to catch new users)
+      const usersInRange = await prisma.user.findMany({
+        where: {
+          createdAt: { gte: startDate },
+        },
+        select: { createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
       if (aggregationUnit === 'day') {
-        // Daily aggregation for 7, 30, 90 days - Use MongoDB aggregation pipeline
-        const startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - days);
-        startDate.setHours(0, 0, 0, 0);
-        
-        const dailyGrowth = await User.aggregate([
-          {
-            $match: {
-              createdAt: { $gte: startDate, $lte: now }
-            }
-          },
-          {
-            $group: {
-              _id: {
-                $dateToString: {
-                  format: "%Y-%m-%d",
-                  date: "$createdAt"
-                }
-              },
-              count: { $sum: 1 }
-            }
-          },
-          {
-            $sort: { _id: 1 }
-          }
-        ]);
-        
-        // Create a map for quick lookup
         const growthMap = new Map();
-        dailyGrowth.forEach(item => {
-          growthMap.set(item._id, item.count);
+        usersInRange.forEach(user => {
+          // Use UTC date to match database timestamps (Prisma stores as UTC)
+          const userDate = new Date(user.createdAt);
+          const dateStr = userDate.toISOString().split('T')[0];
+          growthMap.set(dateStr, (growthMap.get(dateStr) || 0) + 1);
         });
         
-        // Fill in all days, including those with 0 users
+        // Generate data for all days in range, including today
+        // Use UTC for all date operations to match database
+        const today = new Date();
+        const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+        
         for (let i = days - 1; i >= 0; i--) {
-          const date = new Date(now);
-          date.setDate(date.getDate() - i);
-          date.setHours(0, 0, 0, 0);
+          const date = new Date(todayUTC);
+          date.setUTCDate(date.getUTCDate() - i);
+          date.setUTCHours(0, 0, 0, 0);
           const dateStr = date.toISOString().split('T')[0];
-          
           userGrowthData.push({
             date: dateStr,
-            count: growthMap.get(dateStr) || 0
+            count: growthMap.get(dateStr) || 0,
           });
         }
       } else if (aggregationUnit === 'week') {
-        // Weekly aggregation for 6 months (26 weeks) - Use aggregation
-        const weeks = 26;
-        const startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - (weeks * 7));
-        startDate.setHours(0, 0, 0, 0);
-        
-        // Get all users in the date range
-        const allUsers = await User.find(
-          { createdAt: { $gte: startDate, $lte: now } },
-          { createdAt: 1 }
-        ).lean();
-        
-        // Group by week manually (more reliable than $week)
         const growthMap = new Map();
-        allUsers.forEach(user => {
+        usersInRange.forEach(user => {
           const userDate = new Date(user.createdAt);
-          // Get Monday of the week
           const dayOfWeek = userDate.getDay();
           const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
           const weekStart = new Date(userDate);
           weekStart.setDate(weekStart.getDate() + diff);
           weekStart.setHours(0, 0, 0, 0);
           const weekKey = weekStart.toISOString().split('T')[0];
-          
           growthMap.set(weekKey, (growthMap.get(weekKey) || 0) + 1);
         });
         
-        // Fill in all weeks
+        const weeks = 26;
         for (let i = weeks - 1; i >= 0; i--) {
           const weekStart = new Date(now);
           weekStart.setDate(weekStart.getDate() - (i * 7));
           weekStart.setHours(0, 0, 0, 0);
-          
-          // Set to start of week (Monday)
           const dayOfWeek = weekStart.getDay();
           const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
           weekStart.setDate(weekStart.getDate() + diff);
-          
           const weekKey = weekStart.toISOString().split('T')[0];
-          
           userGrowthData.push({
             date: weekKey,
-            count: growthMap.get(weekKey) || 0
+            count: growthMap.get(weekKey) || 0,
           });
         }
       } else if (aggregationUnit === 'month') {
-        // Monthly aggregation for 1 year (12 months) - Use aggregation
-        const months = 12;
-        const startDate = new Date(now.getFullYear(), now.getMonth() - months, 1);
-        startDate.setHours(0, 0, 0, 0);
-        
-        const monthlyGrowth = await User.aggregate([
-          {
-            $match: {
-              createdAt: { $gte: startDate, $lte: now }
-            }
-          },
-          {
-            $group: {
-              _id: {
-                year: { $year: "$createdAt" },
-                month: { $month: "$createdAt" }
-              },
-              count: { $sum: 1 }
-            }
-          },
-          {
-            $sort: { "_id.year": 1, "_id.month": 1 }
-          }
-        ]);
-        
-        // Create a map for quick lookup
         const growthMap = new Map();
-        monthlyGrowth.forEach(item => {
-          const monthStart = new Date(item._id.year, item._id.month - 1, 1);
+        usersInRange.forEach(user => {
+          const userDate = new Date(user.createdAt);
+          const monthStart = new Date(userDate.getFullYear(), userDate.getMonth(), 1);
           const monthKey = monthStart.toISOString().split('T')[0];
-          growthMap.set(monthKey, item.count);
+          growthMap.set(monthKey, (growthMap.get(monthKey) || 0) + 1);
         });
         
-        // Fill in all months
+        const months = 12;
         for (let i = months - 1; i >= 0; i--) {
           const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
           monthStart.setHours(0, 0, 0, 0);
           const monthKey = monthStart.toISOString().split('T')[0];
-          
           userGrowthData.push({
             date: monthKey,
-            count: growthMap.get(monthKey) || 0
+            count: growthMap.get(monthKey) || 0,
           });
         }
       }
 
-      // Active vs Inactive users (logged in or had activity in last 7/30 days)
-      // For now, we'll use bookings/messages as activity indicators
-      const activeStudentIds7Days = await Booking.distinct("student", { createdAt: { $gte: sevenDaysAgo } });
-      const activeTeacherIds7Days = await Booking.distinct("teacher", { createdAt: { $gte: sevenDaysAgo } });
-      const activeMessageSenderIds7Days = await Message.distinct("sender", { createdAt: { $gte: sevenDaysAgo } });
-      const newUsers7Days = await User.distinct("_id", { createdAt: { $gte: sevenDaysAgo } });
-      
-      const allActiveIds7Days = new Set([
-        ...activeStudentIds7Days.map(id => id.toString()),
-        ...activeTeacherIds7Days.map(id => id.toString()),
-        ...activeMessageSenderIds7Days.map(id => id.toString()),
-        ...newUsers7Days.map(id => id.toString())
-      ]);
-      
-      const activeStudentIds30Days = await Booking.distinct("student", { createdAt: { $gte: thirtyDaysAgo } });
-      const activeTeacherIds30Days = await Booking.distinct("teacher", { createdAt: { $gte: thirtyDaysAgo } });
-      const activeMessageSenderIds30Days = await Message.distinct("sender", { createdAt: { $gte: thirtyDaysAgo } });
-      const newUsers30Days = await User.distinct("_id", { createdAt: { $gte: thirtyDaysAgo } });
-      
-      const allActiveIds30Days = new Set([
-        ...activeStudentIds30Days.map(id => id.toString()),
-        ...activeTeacherIds30Days.map(id => id.toString()),
-        ...activeMessageSenderIds30Days.map(id => id.toString()),
-        ...newUsers30Days.map(id => id.toString())
+      // Active users (based on bookings and messages)
+      const [activeStudents7Days, activeTeachers7Days, activeSenders7Days, newUsers7Days] = await Promise.all([
+        prisma.booking.findMany({
+          where: { createdAt: { gte: sevenDaysAgo } },
+          select: { studentId: true },
+          distinct: ['studentId'],
+        }),
+        prisma.booking.findMany({
+          where: { createdAt: { gte: sevenDaysAgo } },
+          select: { teacherId: true },
+          distinct: ['teacherId'],
+        }),
+        prisma.message.findMany({
+          where: { createdAt: { gte: sevenDaysAgo } },
+          select: { senderId: true },
+          distinct: ['senderId'],
+        }),
+        prisma.user.findMany({
+          where: { createdAt: { gte: sevenDaysAgo } },
+          select: { id: true },
+        }),
       ]);
 
-      // Top instruments by user count
-      const allUsers = await User.find({}, "instruments location");
+      const allActiveIds7Days = new Set([
+        ...activeStudents7Days.map(b => b.studentId),
+        ...activeTeachers7Days.map(b => b.teacherId),
+        ...activeSenders7Days.map(m => m.senderId),
+        ...newUsers7Days.map(u => u.id),
+      ]);
+
+      const [activeStudents30Days, activeTeachers30Days, activeSenders30Days, newUsers30Days] = await Promise.all([
+        prisma.booking.findMany({
+          where: { createdAt: { gte: thirtyDaysAgo } },
+          select: { studentId: true },
+          distinct: ['studentId'],
+        }),
+        prisma.booking.findMany({
+          where: { createdAt: { gte: thirtyDaysAgo } },
+          select: { teacherId: true },
+          distinct: ['teacherId'],
+        }),
+        prisma.message.findMany({
+          where: { createdAt: { gte: thirtyDaysAgo } },
+          select: { senderId: true },
+          distinct: ['senderId'],
+        }),
+        prisma.user.findMany({
+          where: { createdAt: { gte: thirtyDaysAgo } },
+          select: { id: true },
+        }),
+      ]);
+
+      const allActiveIds30Days = new Set([
+        ...activeStudents30Days.map(b => b.studentId),
+        ...activeTeachers30Days.map(b => b.teacherId),
+        ...activeSenders30Days.map(m => m.senderId),
+        ...newUsers30Days.map(u => u.id),
+      ]);
+
+      // Top instruments and locations
+      const allUsers = await prisma.user.findMany({
+        select: { 
+          instruments: true,
+          location: true,
+          city: true,
+          state: true,
+          country: true,
+        },
+      });
       const instrumentCounts = {};
       allUsers.forEach(user => {
         if (user.instruments && Array.isArray(user.instruments)) {
@@ -271,12 +240,27 @@ router.get(
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-      // Top locations
+      // Top locations - check multiple location fields
       const locationCounts = {};
       allUsers.forEach(user => {
+        // Try location field first, then city, then city + country combination
+        let locationStr = '';
         if (user.location && user.location.trim()) {
-          const location = user.location.trim();
-          locationCounts[location] = (locationCounts[location] || 0) + 1;
+          locationStr = user.location.trim();
+        } else if (user.city && user.city.trim()) {
+          // If city exists, combine with country if available
+          locationStr = user.city.trim();
+          if (user.country && user.country.trim()) {
+            locationStr += `, ${user.country.trim()}`;
+          } else if (user.state && user.state.trim()) {
+            locationStr += `, ${user.state.trim()}`;
+          }
+        } else if (user.country && user.country.trim()) {
+          locationStr = user.country.trim();
+        }
+        
+        if (locationStr) {
+          locationCounts[locationStr] = (locationCounts[locationStr] || 0) + 1;
         }
       });
       const topLocations = Object.entries(locationCounts)
@@ -288,40 +272,44 @@ router.get(
       const usersWithoutLocation = totalUsers - usersWithLocation;
 
       // Teacher-Student ratios
-      const teachersWithStudents = await Booking.distinct("teacher");
-      const teacherStudentCounts = await Booking.aggregate([
-        { $group: { _id: "$teacher", studentCount: { $addToSet: "$student" } } },
-        { $project: { teacherId: "$_id", studentCount: { $size: "$studentCount" } } }
-      ]);
+      const teacherBookings = await prisma.booking.findMany({
+        select: { teacherId: true, studentId: true },
+      });
+      const teacherStudentMap = new Map();
+      teacherBookings.forEach(booking => {
+        if (!teacherStudentMap.has(booking.teacherId)) {
+          teacherStudentMap.set(booking.teacherId, new Set());
+        }
+        teacherStudentMap.get(booking.teacherId).add(booking.studentId);
+      });
       
-      const teachersWithNoStudents = teachers - teachersWithStudents.length;
-      const avgStudentsPerTeacher = teachers > 0 
-        ? teacherStudentCounts.reduce((sum, t) => sum + t.studentCount, 0) / teachersWithStudents.length || 0
+      const teachersWithStudents = teacherStudentMap.size;
+      const teachersWithNoStudents = teachers - teachersWithStudents;
+      const avgStudentsPerTeacher = teachersWithStudents > 0
+        ? Array.from(teacherStudentMap.values()).reduce((sum, set) => sum + set.size, 0) / teachersWithStudents
         : 0;
 
-      // User onboarding funnel
-      const usersWithProfile = await User.countDocuments({
-        $or: [
-          { instruments: { $exists: true, $ne: [], $not: { $size: 0 } } },
-          { location: { $exists: true, $ne: "" } },
-          { about: { $exists: true, $ne: "" } }
-        ]
+      // Completed profile
+      const completedProfile = await prisma.user.count({
+        where: {
+          OR: [
+            { instruments: { isEmpty: false } },
+            { location: { not: "" } },
+          ],
+        },
       });
-      
-      const studentsWithFirstBooking = await Booking.distinct("student").length;
-      const teachersWithFirstBooking = await Booking.distinct("teacher").length;
-      const usersWithFirstBooking = studentsWithFirstBooking + teachersWithFirstBooking;
 
-      // Users who completed profile (has instruments or location)
-      const completedProfile = await User.countDocuments({
-        $or: [
-          { instruments: { $exists: true, $ne: [], $not: { $size: 0 } } },
-          { location: { $exists: true, $ne: "" } }
-        ]
+      const studentsWithBooking = await prisma.booking.findMany({
+        select: { studentId: true },
+        distinct: ['studentId'],
       });
+      const teachersWithBooking = await prisma.booking.findMany({
+        select: { teacherId: true },
+        distinct: ['teacherId'],
+      });
+      const usersWithFirstBooking = studentsWithBooking.length + teachersWithBooking.length;
 
       res.json({
-        // Basic metrics
         totalUsers,
         students,
         teachers,
@@ -332,47 +320,25 @@ router.get(
         totalPracticeSessions,
         totalResources,
         totalCommunityPosts,
-        
-        // User growth
-        userGrowth: userGrowthData,
-        
-        // Active vs Inactive
+        userGrowthData: userGrowthData,
         activeUsers7Days: allActiveIds7Days.size,
         activeUsers30Days: allActiveIds30Days.size,
         inactiveUsers7Days: totalUsers - allActiveIds7Days.size,
         inactiveUsers30Days: totalUsers - allActiveIds30Days.size,
-        
-        // Top instruments
         topInstruments,
-        
-        // Top locations
         topLocations,
         usersWithLocation,
         usersWithoutLocation,
-        
-        // Top locations
-        topLocations,
-        usersWithLocation,
-        usersWithoutLocation,
-        
-        // Teacher-Student ratios
-        teachersWithStudents: teachersWithStudents.length,
+        teachersWithStudents,
         teachersWithNoStudents,
         avgStudentsPerTeacher: Math.round(avgStudentsPerTeacher * 10) / 10,
-        teacherStudentCounts: teacherStudentCounts.map(t => ({
-          teacherId: t.teacherId,
-          studentCount: t.studentCount
-        })),
-        
-        // Onboarding funnel
-        signedUp: totalUsers,
         completedProfile,
         usersWithFirstBooking,
         onboardingFunnel: {
           signedUp: totalUsers,
           completedProfile,
-          firstBooking: usersWithFirstBooking
-        }
+          firstBooking: usersWithFirstBooking,
+        },
       });
     } catch (err) {
       console.error("Error fetching admin stats:", err);
@@ -385,603 +351,700 @@ router.get(
  * GET /api/admin/bookings
  * Get all bookings with pagination
  */
-router.get(
-  "/bookings",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const { page = 1, limit = 50 } = req.query;
-      const pageNum = parseInt(page);
-      const limitNum = parseInt(limit);
-      const skip = (pageNum - 1) * limitNum;
+router.get("/bookings", authMiddleware, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
-      const totalCount = await Booking.countDocuments();
-
-      const bookings = await Booking.find()
-        .populate("student", "name email profileImage")
-        .populate("teacher", "name email profileImage")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum);
-
-      res.json({
-        bookings,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: totalCount,
-          totalPages: Math.ceil(totalCount / limitNum),
+    const [bookings, totalCount] = await Promise.all([
+      prisma.booking.findMany({
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+            },
+          },
+          teacher: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+            },
+          },
         },
-      });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.booking.count(),
+    ]);
+
+    res.json({
+      bookings,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 /**
  * GET /api/admin/messages
- * Get all messages with pagination
+ * Get all conversations grouped by participants
  */
-router.get(
-  "/messages",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const { page = 1, limit = 50 } = req.query;
-      const pageNum = parseInt(page);
-      const limitNum = parseInt(limit);
-      const skip = (pageNum - 1) * limitNum;
-
-      const totalCount = await Message.countDocuments();
-
-      const messages = await Message.find()
-        .populate("sender", "name email profileImage role")
-        .populate("recipient", "name email profileImage role")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum);
-
-      res.json({
-        messages,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: totalCount,
-          totalPages: Math.ceil(totalCount / limitNum),
+router.get("/messages", authMiddleware, async (req, res) => {
+  try {
+    // Get all messages with sender and recipient info
+    const allMessages = await prisma.message.findMany({
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            profileImage: true,
+            role: true,
+          },
         },
-      });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+        recipient: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            profileImage: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Group messages by conversation (roomId or sender-recipient pair)
+    const conversationsMap = new Map();
+    
+    allMessages.forEach((message) => {
+      // Use roomId if available, otherwise generate from sender/recipient IDs
+      const roomId = message.roomId || [message.senderId, message.recipientId].sort().join('_');
+      
+      if (!conversationsMap.has(roomId)) {
+        conversationsMap.set(roomId, {
+          roomId,
+          participant1: message.sender,
+          participant2: message.recipient,
+          messages: [],
+          lastMessage: message,
+          lastMessageAt: message.createdAt,
+          unreadCount: 0,
+          totalMessages: 0,
+        });
+      }
+      
+      const conversation = conversationsMap.get(roomId);
+      conversation.messages.push(message);
+      conversation.totalMessages++;
+      
+      // Count unread messages (assuming unread from recipient's perspective)
+      if (!message.read) {
+        conversation.unreadCount++;
+      }
+      
+      // Update last message if this is newer
+      if (new Date(message.createdAt) > new Date(conversation.lastMessageAt)) {
+        conversation.lastMessage = message;
+        conversation.lastMessageAt = message.createdAt;
+      }
+    });
+
+    // Convert map to array and sort by last message date
+    const conversations = Array.from(conversationsMap.values())
+      .map((conv) => ({
+        roomId: conv.roomId,
+        participant1: conv.participant1,
+        participant2: conv.participant2,
+        lastMessage: {
+          id: conv.lastMessage.id,
+          text: conv.lastMessage.text,
+          senderId: conv.lastMessage.senderId,
+          recipientId: conv.lastMessage.recipientId,
+          read: conv.lastMessage.read,
+          createdAt: conv.lastMessage.createdAt,
+        },
+        lastMessageAt: conv.lastMessageAt,
+        unreadCount: conv.unreadCount,
+        totalMessages: conv.totalMessages,
+      }))
+      .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+
+    res.json({
+      conversations,
+      total: conversations.length,
+    });
+  } catch (err) {
+    console.error("Error fetching admin conversations:", err);
+    res.status(500).json({ message: err.message });
   }
-);
+});
+
+/**
+ * GET /api/admin/messages/:roomId
+ * Get all messages in a specific conversation
+ */
+router.get("/messages/:roomId", authMiddleware, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    
+    const messages = await prisma.message.findMany({
+      where: {
+        roomId: roomId,
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            profileImage: true,
+            role: true,
+          },
+        },
+        recipient: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            profileImage: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    res.json(messages);
+  } catch (err) {
+    console.error("Error fetching conversation messages:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
 
 /**
  * GET /api/admin/practice-sessions
  * Get all practice sessions with pagination
  */
-router.get(
-  "/practice-sessions",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const { page = 1, limit = 50 } = req.query;
-      const pageNum = parseInt(page);
-      const limitNum = parseInt(limit);
-      const skip = (pageNum - 1) * limitNum;
+router.get("/practice-sessions", authMiddleware, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
-      const totalCount = await PracticeSession.countDocuments();
-
-      const sessions = await PracticeSession.find()
-        .populate("student", "name email profileImage")
-        .sort({ date: -1 })
-        .skip(skip)
-        .limit(limitNum);
-
-      res.json({
-        sessions,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: totalCount,
-          totalPages: Math.ceil(totalCount / limitNum),
+    const [sessions, totalCount] = await Promise.all([
+      prisma.practiceSession.findMany({
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+            },
+          },
         },
-      });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+        orderBy: { date: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.practiceSession.count(),
+    ]);
+
+    res.json({
+      sessions,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 /**
  * GET /api/admin/community-posts
  * Get all community posts with pagination
  */
-router.get(
-  "/community-posts",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const { page = 1, limit = 50 } = req.query;
-      const pageNum = parseInt(page);
-      const limitNum = parseInt(limit);
-      const skip = (pageNum - 1) * limitNum;
+router.get("/community-posts", authMiddleware, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
-      const totalCount = await CommunityPost.countDocuments();
-
-      const posts = await CommunityPost.find()
-        .populate("author", "name email profileImage role")
-        .populate("likes", "name")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum);
-
-      res.json({
-        posts,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: totalCount,
-          totalPages: Math.ceil(totalCount / limitNum),
+    const [posts, totalCount] = await Promise.all([
+      prisma.communityPost.findMany({
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+              role: true,
+            },
+          },
+          likes: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
         },
-      });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.communityPost.count(),
+    ]);
+
+    res.json({
+      posts,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 /**
  * GET /api/admin/users
  * Get all users with pagination
  */
-router.get(
-  "/users",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const { page = 1, limit = 50 } = req.query;
-      const pageNum = parseInt(page);
-      const limitNum = parseInt(limit);
-      const skip = (pageNum - 1) * limitNum;
+router.get("/users", authMiddleware, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
-      const totalCount = await User.countDocuments();
-
-      const users = await User.find()
-        .select("-password")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum);
-
-      res.json({
-        users,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: totalCount,
-          totalPages: Math.ceil(totalCount / limitNum),
+    const [users, totalCount] = await Promise.all([
+      prisma.user.findMany({
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          instruments: true,
+          location: true,
+          profileImage: true,
+          createdAt: true,
         },
-      });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.user.count(),
+    ]);
+
+    res.json({
+      users,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 /**
  * DELETE /api/admin/users/:id
  * Delete a user (admin only)
  */
-router.delete(
-  "/users/:id",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const user = await User.findById(req.params.id);
+router.delete("/users/:id", authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+    });
 
-      if (!user) {
-        return res.status(404).json({ message: "User not found." });
-      }
-
-      // Prevent deleting yourself
-      if (user._id.toString() === req.user.id) {
-        return res.status(400).json({ message: "You cannot delete your own account." });
-      }
-
-      await user.deleteOne();
-
-      res.json({ message: "User deleted successfully." });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
     }
+
+    if (user.id === req.user.id) {
+      return res.status(400).json({ message: "You cannot delete your own account." });
+    }
+
+    await prisma.user.delete({
+      where: { id: req.params.id },
+    });
+
+    res.json({ message: "User deleted successfully." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 /**
  * DELETE /api/admin/bookings/:id
  * Delete a booking (admin only)
  */
-router.delete(
-  "/bookings/:id",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const booking = await Booking.findById(req.params.id);
+router.delete("/bookings/:id", authMiddleware, async (req, res) => {
+  try {
+    await prisma.booking.delete({
+      where: { id: req.params.id },
+    });
 
-      if (!booking) {
-        return res.status(404).json({ message: "Booking not found." });
-      }
-
-      await booking.deleteOne();
-
-      res.json({ message: "Booking deleted successfully." });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
+    res.json({ message: "Booking deleted successfully." });
+  } catch (err) {
+    if (err.code === 'P2025') {
+      return res.status(404).json({ message: "Booking not found." });
     }
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 /**
  * DELETE /api/admin/messages/:id
  * Delete a message (admin only)
  */
-router.delete(
-  "/messages/:id",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const message = await Message.findById(req.params.id);
+router.delete("/messages/:id", authMiddleware, async (req, res) => {
+  try {
+    await prisma.message.delete({
+      where: { id: req.params.id },
+    });
 
-      if (!message) {
-        return res.status(404).json({ message: "Message not found." });
-      }
-
-      await message.deleteOne();
-
-      res.json({ message: "Message deleted successfully." });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
+    res.json({ message: "Message deleted successfully." });
+  } catch (err) {
+    if (err.code === 'P2025') {
+      return res.status(404).json({ message: "Message not found." });
     }
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 /**
  * DELETE /api/admin/community-posts/:id
  * Delete a community post (admin only)
  */
-router.delete(
-  "/community-posts/:id",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const post = await CommunityPost.findById(req.params.id);
+router.delete("/community-posts/:id", authMiddleware, async (req, res) => {
+  try {
+    await prisma.communityPost.delete({
+      where: { id: req.params.id },
+    });
 
-      if (!post) {
-        return res.status(404).json({ message: "Post not found." });
-      }
-
-      await post.deleteOne();
-
-      res.json({ message: "Post deleted successfully." });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
+    res.json({ message: "Post deleted successfully." });
+  } catch (err) {
+    if (err.code === 'P2025') {
+      return res.status(404).json({ message: "Post not found." });
     }
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 /**
  * DELETE /api/admin/practice-sessions/:id
  * Delete a practice session (admin only)
  */
-router.delete(
-  "/practice-sessions/:id",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const session = await PracticeSession.findById(req.params.id);
+router.delete("/practice-sessions/:id", authMiddleware, async (req, res) => {
+  try {
+    await prisma.practiceSession.delete({
+      where: { id: req.params.id },
+    });
 
-      if (!session) {
-        return res.status(404).json({ message: "Practice session not found." });
-      }
-
-      await session.deleteOne();
-
-      res.json({ message: "Practice session deleted successfully." });
-    } catch (err) {
-      res.status(500).json({ message: err.message });
+    res.json({ message: "Practice session deleted successfully." });
+  } catch (err) {
+    if (err.code === 'P2025') {
+      return res.status(404).json({ message: "Practice session not found." });
     }
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 /**
  * POST /api/admin/bulk-message
  * Send bulk messages to multiple users
  */
+router.post("/bulk-message", authMiddleware, async (req, res) => {
+  try {
+    const { userIds, message } = req.body;
+
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ message: "User IDs array is required and must not be empty." });
+    }
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ message: "Message text is required." });
+    }
+
+    const adminId = req.user.id;
+
+    // Create messages for all recipients
+    const messages = userIds.map((userId) => ({
+      senderId: adminId,
+      recipientId: userId,
+      text: message.trim(),
+      read: false,
+    }));
+
+    // Use createMany for bulk insert
+    const result = await prisma.message.createMany({
+      data: messages,
+    });
+
+    res.json({
+      message: `Successfully sent ${result.count} message(s).`,
+      count: result.count,
+    });
+  } catch (err) {
+    console.error("Error sending bulk messages:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 /**
  * GET /api/admin/search
  * Global search across all entities
  */
-router.get(
-  "/search",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const { q, limit = 5 } = req.query;
-      
-      if (!q || q.trim().length === 0) {
-        return res.json({
-          users: [],
-          bookings: [],
-          messages: [],
-          practiceSessions: [],
-          communityPosts: [],
-          resources: [],
-        });
-      }
-
-      const searchTerm = q.trim();
-      const searchRegex = new RegExp(searchTerm, 'i');
-      const limitNum = parseInt(limit);
-
-      // Search users
-      const users = await User.find({
-        $or: [
-          { name: searchRegex },
-          { email: searchRegex },
-        ],
-      })
-        .select('name email role profileImage')
-        .limit(limitNum);
-
-      // Search bookings (by student/teacher name or status)
-      const bookings = await Booking.find({
-        $or: [
-          { status: searchRegex },
-        ],
-      })
-        .populate('student', 'name email')
-        .populate('teacher', 'name email')
-        .limit(limitNum)
-        .sort({ createdAt: -1 });
-
-      // Filter bookings by student/teacher name if they match
-      const filteredBookings = bookings.filter(booking => {
-        const studentName = booking.student?.name || '';
-        const teacherName = booking.teacher?.name || '';
-        return studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               teacherName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               booking.status.toLowerCase().includes(searchTerm.toLowerCase());
-      }).slice(0, limitNum);
-
-      // Search messages (by text content or sender/recipient name)
-      const messages = await Message.find({
-        text: searchRegex,
-      })
-        .populate('sender', 'name email')
-        .populate('recipient', 'name email')
-        .limit(limitNum)
-        .sort({ createdAt: -1 });
-
-      // Search practice sessions (by student name or notes)
-      const practiceSessions = await PracticeSession.find({
-        $or: [
-          { notes: searchRegex },
-        ],
-      })
-        .populate('student', 'name email')
-        .limit(limitNum)
-        .sort({ date: -1 });
-
-      // Filter practice sessions by student name
-      const filteredSessions = practiceSessions.filter(session => {
-        const studentName = session.student?.name || '';
-        return studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-               (session.notes && session.notes.toLowerCase().includes(searchTerm.toLowerCase()));
-      }).slice(0, limitNum);
-
-      // Search community posts (by title or content)
-      const communityPosts = await CommunityPost.find({
-        $or: [
-          { title: searchRegex },
-          { content: searchRegex },
-        ],
-      })
-        .populate('author', 'name email')
-        .limit(limitNum)
-        .sort({ createdAt: -1 });
-
-      // Search resources (by title or description)
-      const resources = await Resource.find({
-        $or: [
-          { title: searchRegex },
-          { description: searchRegex },
-        ],
-      })
-        .populate('uploadedBy', 'name email')
-        .limit(limitNum)
-        .sort({ createdAt: -1 });
-
-      res.json({
-        users,
-        bookings: filteredBookings,
-        messages,
-        practiceSessions: filteredSessions,
-        communityPosts,
-        resources,
+router.get("/search", authMiddleware, async (req, res) => {
+  try {
+    const { q, limit = 5 } = req.query;
+    
+    if (!q || q.trim().length === 0) {
+      return res.json({
+        users: [],
+        bookings: [],
+        messages: [],
+        practiceSessions: [],
+        communityPosts: [],
+        resources: [],
       });
-    } catch (err) {
-      console.error('Error in global search:', err);
-      res.status(500).json({ message: err.message });
     }
+
+    const searchTerm = q.trim();
+    const limitNum = parseInt(limit);
+
+    // Search users
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { email: { contains: searchTerm, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        profileImage: true,
+      },
+      take: limitNum,
+    });
+
+    // Search bookings (by status)
+    const bookings = await prisma.booking.findMany({
+      where: {
+        status: { contains: searchTerm, mode: 'insensitive' },
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        teacher: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      take: limitNum,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Filter bookings by student/teacher name
+    const filteredBookings = bookings.filter(booking => {
+      const studentName = booking.student?.name || '';
+      const teacherName = booking.teacher?.name || '';
+      return studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             teacherName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             booking.status.toLowerCase().includes(searchTerm.toLowerCase());
+    }).slice(0, limitNum);
+
+    // Search messages
+    const messages = await prisma.message.findMany({
+      where: {
+        text: { contains: searchTerm, mode: 'insensitive' },
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        recipient: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      take: limitNum,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Search practice sessions
+    const practiceSessions = await prisma.practiceSession.findMany({
+      where: {
+        notes: { contains: searchTerm, mode: 'insensitive' },
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      take: limitNum,
+      orderBy: { date: 'desc' },
+    });
+
+    const filteredSessions = practiceSessions.filter(session => {
+      const studentName = session.student?.name || '';
+      return studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             (session.notes && session.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+    }).slice(0, limitNum);
+
+    // Search community posts
+    const communityPosts = await prisma.communityPost.findMany({
+      where: {
+        OR: [
+          { title: { contains: searchTerm, mode: 'insensitive' } },
+          { description: { contains: searchTerm, mode: 'insensitive' } },
+        ],
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      take: limitNum,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Search resources
+    const resources = await prisma.resource.findMany({
+      where: {
+        OR: [
+          { title: { contains: searchTerm, mode: 'insensitive' } },
+          { description: { contains: searchTerm, mode: 'insensitive' } },
+        ],
+      },
+      include: {
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      take: limitNum,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      users,
+      bookings: filteredBookings,
+      messages,
+      practiceSessions: filteredSessions,
+      communityPosts,
+      resources,
+    });
+  } catch (err) {
+    console.error('Error in global search:', err);
+    res.status(500).json({ message: err.message });
   }
-);
-
-router.post(
-  "/bulk-message",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const { userIds, message, messageType } = req.body;
-
-      if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-        return res.status(400).json({ message: "User IDs array is required and must not be empty." });
-      }
-
-      if (!message || !message.trim()) {
-        return res.status(400).json({ message: "Message text is required." });
-      }
-
-      // Get admin user ID (sender)
-      const adminId = req.user.id;
-
-      // Create messages for all recipients
-      const messages = userIds.map((userId) => ({
-        sender: adminId,
-        recipient: userId,
-        text: message.trim(),
-        read: false,
-      }));
-
-      // Insert all messages
-      const createdMessages = await Message.insertMany(messages);
-
-      res.json({
-        message: `Successfully sent ${createdMessages.length} message(s).`,
-        count: createdMessages.length,
-        messageIds: createdMessages.map((m) => m._id),
-      });
-    } catch (err) {
-      console.error("Error sending bulk messages:", err);
-      res.status(500).json({ message: err.message });
-    }
-  }
-);
+});
 
 /**
- * GET /api/admin/users/filtered
- * Get filtered users based on criteria
+ * GET /api/admin/inquiries
+ * Get all inquiries with pagination (admin only)
  */
-router.get(
-  "/users/filtered",
-  authMiddleware,
-  // roleMiddleware("admin"),
-  async (req, res) => {
-    try {
-      const {
-        role,
-        instrument,
-        signupDateFrom,
-        signupDateTo,
-        activityLevel, // 'active', 'inactive', 'all'
-        hasProfile,
-        hasBooking,
-      } = req.query;
-
-      const query = {};
-
-      // Filter by role
-      if (role && role !== "all") {
-        query.role = role;
-      }
-
-      // Filter by instrument
-      if (instrument && instrument !== "all") {
-        query.instruments = { $in: [instrument] };
-      }
-
-      // Filter by signup date range
-      if (signupDateFrom || signupDateTo) {
-        query.createdAt = {};
-        if (signupDateFrom) {
-          query.createdAt.$gte = new Date(signupDateFrom);
-        }
-        if (signupDateTo) {
-          query.createdAt.$lte = new Date(signupDateTo);
-        }
-      }
-
-      // Filter by profile completion
-      if (hasProfile === "true") {
-        query.$or = [
-          { instruments: { $exists: true, $ne: [], $not: { $size: 0 } } },
-          { location: { $exists: true, $ne: "" } },
-        ];
-      }
-
-      // Get users matching the query
-      let users = await User.find(query).select("-password").sort({ createdAt: -1 });
-
-      // Filter by activity level (requires checking bookings/messages)
-      if (activityLevel && activityLevel !== "all") {
-        const now = new Date();
-        const daysAgo = activityLevel === "active" ? 30 : null; // For inactive, we'll check users with no recent activity
-        const cutoffDate = daysAgo ? new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000) : null;
-
-        if (activityLevel === "active" && cutoffDate) {
-          // Get users with recent bookings or messages
-          const activeStudentIds = await Booking.distinct("student", { createdAt: { $gte: cutoffDate } });
-          const activeTeacherIds = await Booking.distinct("teacher", { createdAt: { $gte: cutoffDate } });
-          const activeMessageSenderIds = await Message.distinct("sender", { createdAt: { $gte: cutoffDate } });
-          const newUserIds = await User.distinct("_id", { createdAt: { $gte: cutoffDate } });
-
-          const activeIds = new Set([
-            ...activeStudentIds.map((id) => id.toString()),
-            ...activeTeacherIds.map((id) => id.toString()),
-            ...activeMessageSenderIds.map((id) => id.toString()),
-            ...newUserIds.map((id) => id.toString()),
-          ]);
-
-          users = users.filter((user) => activeIds.has(user._id.toString()));
-        } else if (activityLevel === "inactive") {
-          // Get users with no recent activity
-          const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          const activeStudentIds = await Booking.distinct("student", { createdAt: { $gte: thirtyDaysAgo } });
-          const activeTeacherIds = await Booking.distinct("teacher", { createdAt: { $gte: thirtyDaysAgo } });
-          const activeMessageSenderIds = await Message.distinct("sender", { createdAt: { $gte: thirtyDaysAgo } });
-          const newUserIds = await User.distinct("_id", { createdAt: { $gte: thirtyDaysAgo } });
-
-          const activeIds = new Set([
-            ...activeStudentIds.map((id) => id.toString()),
-            ...activeTeacherIds.map((id) => id.toString()),
-            ...activeMessageSenderIds.map((id) => id.toString()),
-            ...newUserIds.map((id) => id.toString()),
-          ]);
-
-          users = users.filter((user) => !activeIds.has(user._id.toString()));
-        }
-      }
-
-      // Filter by has booking
-      if (hasBooking === "true") {
-        const usersWithBookings = await Booking.distinct("student");
-        const teachersWithBookings = await Booking.distinct("teacher");
-        const allUsersWithBookings = [...usersWithBookings, ...teachersWithBookings].map((id) => id.toString());
-        users = users.filter((user) => allUsersWithBookings.includes(user._id.toString()));
-      }
-
-      res.json({
-        users,
-        count: users.length,
-      });
-    } catch (err) {
-      console.error("Error filtering users:", err);
-      res.status(500).json({ message: err.message });
+router.get("/inquiries", authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admin role required.' });
     }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+
+    const [inquiries, totalCount] = await Promise.all([
+      prisma.inquiry.findMany({
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+              role: true,
+            },
+          },
+          teacher: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profileImage: true,
+              role: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.inquiry.count(),
+    ]);
+
+    res.json(inquiries);
+  } catch (err) {
+    console.error("Error fetching admin inquiries:", err);
+    res.status(500).json({ message: err.message });
   }
-);
+});
 
 export default router;
-

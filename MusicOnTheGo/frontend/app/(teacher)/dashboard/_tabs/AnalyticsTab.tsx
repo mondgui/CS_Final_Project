@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 export type Booking = {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   studentName: string;
   instrument: string;
   date: string;

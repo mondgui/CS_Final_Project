@@ -1,13 +1,15 @@
 import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export type Booking = {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   studentName: string;
   instrument: string;
   date: string;
@@ -167,7 +169,7 @@ const BookingCard = ({
         {
           text: "Yes, Cancel",
           style: "destructive",
-          onPress: () => onCancel?.(item._id),
+          onPress: () => onCancel?.((item.id || item._id) as string),
         },
       ]
     );
@@ -213,7 +215,7 @@ const BookingCard = ({
         </View>
         <View style={styles.detailRow}>
           <Ionicons name="time-outline" size={16} color="#666" />
-          <Text style={styles.detailText} numberOfLines={1} flexShrink={1}>{item.time}</Text>
+          <Text style={[styles.detailText, { flexShrink: 1 }]} numberOfLines={1}>{item.time}</Text>
         </View>
       </View>
       
@@ -221,13 +223,13 @@ const BookingCard = ({
         <View style={styles.actionsRow}>
           <TouchableOpacity
             style={styles.rejectButton}
-            onPress={() => onReject?.(item._id)}
+            onPress={() => onReject?.((item.id || item._id) as string)}
           >
             <Text style={styles.rejectButtonText}>Reject</Text>
           </TouchableOpacity>
           <Button
             size="sm"
-            onPress={() => onAccept?.(item._id)}
+            onPress={() => onAccept?.((item.id || item._id) as string)}
             style={styles.acceptButton}
           >
             Accept
@@ -248,6 +250,7 @@ export default function ScheduleBookingsTab({
   onReject,
   onCancel,
 }: Props) {
+  const router = useRouter();
   // Separate bookings into upcoming and past
   const upcomingBookings = bookings.filter(b => !isPastBooking(b));
   const pastBookings = bookings.filter(b => isPastBooking(b));
@@ -344,7 +347,24 @@ export default function ScheduleBookingsTab({
       )}
 
       {!loading && bookings.length === 0 && (
-        <Text style={{ color: "#777" }}>No bookings yet.</Text>
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="calendar-outline" size={48} color="#CCC" style={styles.emptyStateIcon} />
+          <Text style={styles.emptyStateTitle}>No bookings yet</Text>
+          <Text style={styles.emptyStateText}>
+            Students are making the first move by sending inquiries. You'll see inquiries in{" "}
+            <Text 
+              style={styles.emptyStateLink}
+              onPress={() => router.push("/messages")}
+            >
+              Messages
+            </Text>
+            . After you respond to inquiries, make sure to set your available times in the{" "}
+            <Text style={styles.emptyStateBold}>
+              Times
+            </Text>
+            {" "}tab so students can request booking times.
+          </Text>
+        </View>
       )}
 
       {!loading && bookings.length > 0 && (
@@ -361,7 +381,7 @@ export default function ScheduleBookingsTab({
                 <Text style={styles.groupHeader}>Pending</Text>
                 {pendingBookings.map((item) => (
                   <BookingCard
-                    key={item._id}
+                    key={item.id || item._id}
                     item={item}
                     onAccept={onAccept}
                     onReject={onReject}
@@ -377,7 +397,7 @@ export default function ScheduleBookingsTab({
                 <Text style={styles.groupHeader}>{groupKey}</Text>
                 {groupedUpcoming[groupKey].map((item) => (
                   <BookingCard
-                    key={item._id}
+                    key={item.id || item._id}
                     item={item}
                     onAccept={onAccept}
                     onReject={onReject}
@@ -416,7 +436,7 @@ export default function ScheduleBookingsTab({
                 <Text style={styles.groupHeader}>{groupKey}</Text>
                 {groupedPast[groupKey].map((item) => (
                   <BookingCard
-                    key={item._id}
+                    key={item.id || item._id}
                     item={item}
                     onAccept={onAccept}
                     onReject={onReject}
@@ -432,7 +452,7 @@ export default function ScheduleBookingsTab({
                 <Text style={styles.groupHeader}>Rejected</Text>
                 {rejectedBookings.map((item) => (
                   <BookingCard
-                    key={item._id}
+                    key={item.id || item._id}
                     item={item}
                     onAccept={onAccept}
                     onReject={onReject}
@@ -593,6 +613,37 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     color: "#666",
+  },
+  emptyStateContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyStateIcon: {
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: "#666",
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  emptyStateLink: {
+    color: "#FF6A5C",
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
+  emptyStateBold: {
+    fontWeight: "600",
+    color: "#333",
   },
 });
 

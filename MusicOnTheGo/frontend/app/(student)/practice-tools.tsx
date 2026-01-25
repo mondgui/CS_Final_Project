@@ -17,52 +17,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-
-interface Quiz {
-  id: number;
-  question: string;
-  options: string[];
-  correctAnswer: number;
-  explanation: string;
-}
-
-const theoryQuizzes: Quiz[] = [
-  {
-    id: 1,
-    question: "How many half steps are in a perfect fifth?",
-    options: ["5", "7", "9", "12"],
-    correctAnswer: 1,
-    explanation: "A perfect fifth contains 7 half steps (semitones).",
-  },
-  {
-    id: 2,
-    question: "What is the relative minor of C major?",
-    options: ["G minor", "A minor", "E minor", "D minor"],
-    correctAnswer: 1,
-    explanation: "A minor is the relative minor of C major, sharing the same key signature.",
-  },
-  {
-    id: 3,
-    question: "Which interval is known as the \"devil's interval\"?",
-    options: ["Major 7th", "Diminished 5th", "Augmented 4th", "Both B and C"],
-    correctAnswer: 3,
-    explanation: "The tritone (diminished 5th/augmented 4th) was historically called the devil's interval.",
-  },
-  {
-    id: 4,
-    question: "How many sharps are in the key of E major?",
-    options: ["3", "4", "5", "6"],
-    correctAnswer: 1,
-    explanation: "E major has 4 sharps: F#, C#, G#, and D#.",
-  },
-  {
-    id: 5,
-    question: "What does \"forte\" mean in music?",
-    options: ["Loud", "Soft", "Fast", "Slow"],
-    correctAnswer: 0,
-    explanation: "Forte (f) is a dynamic marking that means to play loudly.",
-  },
-];
+import {
+  getQuestionsByDifficulty,
+  selectRandomQuestions,
+  type Difficulty,
+  type QuizQuestion,
+} from "../../lib/quizQuestions";
 
 export default function InteractiveToolsScreen() {
   const router = useRouter();
@@ -82,14 +42,18 @@ export default function InteractiveToolsScreen() {
   const tunerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Quiz state
+  const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | null>(null);
+  const [quizLength, setQuizLength] = useState<5 | 10>(10);
+  const [currentQuizQuestions, setCurrentQuizQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [score, setScore] = useState(0);
   const [quizCompleted, setQuizCompleted] = useState(false);
+  const [quizStarted, setQuizStarted] = useState(false);
 
   const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  const currentQuiz = theoryQuizzes[currentQuizIndex];
+  const currentQuiz = currentQuizQuestions[currentQuizIndex];
 
   // Metronome effect
   useEffect(() => {
@@ -162,14 +126,36 @@ export default function InteractiveToolsScreen() {
     return `${Math.abs(tuningAccuracy)} cents flat ↓`;
   };
 
+  const handleStartQuiz = () => {
+    if (!selectedDifficulty) {
+      Alert.alert("Error", "Please select a difficulty level");
+      return;
+    }
+
+    // Get questions for selected difficulty
+    const allLevelQuestions = getQuestionsByDifficulty(selectedDifficulty);
+    
+    // Select random questions based on quiz length
+    const selectedQuestions = selectRandomQuestions(allLevelQuestions, quizLength);
+    
+    // Set the quiz questions
+    setCurrentQuizQuestions(selectedQuestions);
+    setQuizStarted(true);
+    setCurrentQuizIndex(0);
+    setSelectedAnswer(null);
+    setShowExplanation(false);
+    setScore(0);
+    setQuizCompleted(false);
+  };
+
   const handleAnswerSelect = (answerIndex: number) => {
-    if (showExplanation) return;
+    if (showExplanation || !currentQuiz) return;
 
     setSelectedAnswer(answerIndex);
     setShowExplanation(true);
 
     if (answerIndex === currentQuiz.correctAnswer) {
-      setScore(score + 1);
+      setScore((prev) => prev + 1);
       Alert.alert("Correct! 🎉");
     } else {
       Alert.alert("Not quite right. Check the explanation!");
@@ -177,20 +163,23 @@ export default function InteractiveToolsScreen() {
   };
 
   const handleNextQuestion = () => {
-    if (currentQuizIndex < theoryQuizzes.length - 1) {
-      setCurrentQuizIndex(currentQuizIndex + 1);
+    if (currentQuizIndex < currentQuizQuestions.length - 1) {
+      setCurrentQuizIndex((prev) => prev + 1);
       setSelectedAnswer(null);
       setShowExplanation(false);
     } else {
       setQuizCompleted(true);
+      // Score is already updated, no need to add 1
       Alert.alert(
         "Quiz Complete!",
-        `You scored ${score + 1}/${theoryQuizzes.length}`
+        `You scored ${score}/${currentQuizQuestions.length}`
       );
     }
   };
 
   const handleRestartQuiz = () => {
+    setQuizStarted(false);
+    setCurrentQuizQuestions([]);
     setCurrentQuizIndex(0);
     setSelectedAnswer(null);
     setShowExplanation(false);
@@ -466,93 +455,228 @@ export default function InteractiveToolsScreen() {
 
           {/* Theory Quiz Tab */}
           <TabsContent value="quiz">
-            {!quizCompleted ? (
-              <>
-                {/* Progress */}
-                <Card style={styles.progressCard}>
-                  <View style={styles.progressHeader}>
-                    <View style={styles.progressTitleRow}>
-                      <Ionicons name="bulb-outline" size={20} color="#FF6A5C" />
-                      <Text style={styles.progressTitle}>
-                        Question {currentQuizIndex + 1}/{theoryQuizzes.length}
-                      </Text>
-                    </View>
-                    <Badge variant="default">
-                      Score: {score}/{theoryQuizzes.length}
-                    </Badge>
+            {!quizStarted ? (
+              /* Difficulty Selection Screen */
+              <Card style={styles.selectionCard}>
+                <View style={styles.selectionContent}>
+                  <View style={styles.selectionIcon}>
+                    <Ionicons name="bulb-outline" size={48} color="#FF6A5C" />
                   </View>
-                  <Progress
-                    value={((currentQuizIndex + 1) / theoryQuizzes.length) * 100}
-                    style={styles.progressBar}
-                  />
-                </Card>
+                  <Text style={styles.selectionTitle}>Theory Quiz</Text>
+                  <Text style={styles.selectionSubtitle}>
+                    Test your music theory knowledge with randomized questions
+                  </Text>
 
-                {/* Question */}
-                <Card style={styles.quizCard}>
-                  <View style={styles.quizContent}>
-                    <Text style={styles.questionText}>{currentQuiz.question}</Text>
-
-                    {/* Answer Options */}
-                    <View style={styles.optionsList}>
-                      {currentQuiz.options.map((option, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={[
-                            styles.optionButton,
-                            showExplanation &&
-                              index === currentQuiz.correctAnswer &&
-                              styles.optionButtonCorrect,
-                            showExplanation &&
-                              index === selectedAnswer &&
-                              index !== currentQuiz.correctAnswer &&
-                              styles.optionButtonIncorrect,
-                            !showExplanation &&
-                              selectedAnswer === index &&
-                              styles.optionButtonSelected,
-                          ]}
-                          onPress={() => handleAnswerSelect(index)}
-                          disabled={showExplanation}
-                        >
-                          <View style={styles.optionContent}>
-                            <Text style={styles.optionText}>{option}</Text>
-                            {showExplanation && index === currentQuiz.correctAnswer && (
-                              <Ionicons name="checkmark-circle" size={20} color="#059669" />
-                            )}
-                            {showExplanation &&
-                              index === selectedAnswer &&
-                              index !== currentQuiz.correctAnswer && (
-                                <Ionicons name="close-circle" size={20} color="#DC2626" />
-                              )}
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    {/* Explanation */}
-                    {showExplanation && (
-                      <View style={styles.explanationBox}>
-                        <Text style={styles.explanationText}>
-                          <Text style={styles.explanationBold}>Explanation:</Text>{" "}
-                          {currentQuiz.explanation}
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Next Button */}
-                    {showExplanation && (
-                      <Button
-                        onPress={handleNextQuestion}
-                        style={styles.nextButton}
+                  {/* Difficulty Selection */}
+                  <View style={styles.selectionSection}>
+                    <Text style={styles.selectionLabel}>Select Difficulty Level</Text>
+                    <View style={styles.difficultyButtons}>
+                      <TouchableOpacity
+                        style={[
+                          styles.difficultyButton,
+                          selectedDifficulty === 'beginner' && styles.difficultyButtonSelected,
+                        ]}
+                        onPress={() => setSelectedDifficulty('beginner')}
                       >
-                        <Text style={styles.nextButtonText}>
-                          {currentQuizIndex < theoryQuizzes.length - 1
-                            ? "Next Question"
-                            : "Finish Quiz"}
+                        <Ionicons
+                          name={selectedDifficulty === 'beginner' ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={24}
+                          color={selectedDifficulty === 'beginner' ? '#FF6A5C' : '#999'}
+                        />
+                        <Text
+                          style={[
+                            styles.difficultyButtonText,
+                            selectedDifficulty === 'beginner' && styles.difficultyButtonTextSelected,
+                          ]}
+                        >
+                          Beginner
                         </Text>
-                      </Button>
-                    )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.difficultyButton,
+                          selectedDifficulty === 'intermediate' && styles.difficultyButtonSelected,
+                        ]}
+                        onPress={() => setSelectedDifficulty('intermediate')}
+                      >
+                        <Ionicons
+                          name={selectedDifficulty === 'intermediate' ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={24}
+                          color={selectedDifficulty === 'intermediate' ? '#FF6A5C' : '#999'}
+                        />
+                        <Text
+                          style={[
+                            styles.difficultyButtonText,
+                            selectedDifficulty === 'intermediate' && styles.difficultyButtonTextSelected,
+                          ]}
+                        >
+                          Intermediate
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.difficultyButton,
+                          selectedDifficulty === 'advanced' && styles.difficultyButtonSelected,
+                        ]}
+                        onPress={() => setSelectedDifficulty('advanced')}
+                      >
+                        <Ionicons
+                          name={selectedDifficulty === 'advanced' ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={24}
+                          color={selectedDifficulty === 'advanced' ? '#FF6A5C' : '#999'}
+                        />
+                        <Text
+                          style={[
+                            styles.difficultyButtonText,
+                            selectedDifficulty === 'advanced' && styles.difficultyButtonTextSelected,
+                          ]}
+                        >
+                          Advanced
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </Card>
+
+                  {/* Quiz Length Selection */}
+                  <View style={styles.selectionSection}>
+                    <Text style={styles.selectionLabel}>Quiz Length</Text>
+                    <View style={styles.lengthButtons}>
+                      <TouchableOpacity
+                        style={[
+                          styles.lengthButton,
+                          quizLength === 5 && styles.lengthButtonSelected,
+                        ]}
+                        onPress={() => setQuizLength(5)}
+                      >
+                        <Text
+                          style={[
+                            styles.lengthButtonText,
+                            quizLength === 5 && styles.lengthButtonTextSelected,
+                          ]}
+                        >
+                          5 Questions
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.lengthButton,
+                          quizLength === 10 && styles.lengthButtonSelected,
+                        ]}
+                        onPress={() => setQuizLength(10)}
+                      >
+                        <Text
+                          style={[
+                            styles.lengthButtonText,
+                            quizLength === 10 && styles.lengthButtonTextSelected,
+                          ]}
+                        >
+                          10 Questions
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Start Button */}
+                  <Button
+                    onPress={handleStartQuiz}
+                    style={styles.startQuizButton}
+                    disabled={!selectedDifficulty}
+                  >
+                    <Text style={styles.startQuizButtonText}>Start Quiz</Text>
+                  </Button>
+                </View>
+              </Card>
+            ) : !quizCompleted ? (
+              <>
+                {currentQuiz && (
+                  <>
+                    {/* Progress */}
+                    <Card style={styles.progressCard}>
+                      <View style={styles.progressHeader}>
+                        <View style={styles.progressTitleRow}>
+                          <Ionicons name="bulb-outline" size={20} color="#FF6A5C" />
+                          <Text style={styles.progressTitle}>
+                            Question {currentQuizIndex + 1}/{currentQuizQuestions.length}
+                          </Text>
+                        </View>
+                        <Badge variant="default">
+                          Score: {score}/{currentQuizQuestions.length}
+                        </Badge>
+                      </View>
+                      <Progress
+                        value={((currentQuizIndex + 1) / currentQuizQuestions.length) * 100}
+                        style={styles.progressBar}
+                      />
+                    </Card>
+
+                    {/* Question */}
+                    <Card style={styles.quizCard}>
+                      <View style={styles.quizContent}>
+                        <Text style={styles.questionText}>{currentQuiz.question}</Text>
+
+                        {/* Answer Options */}
+                        <View style={styles.optionsList}>
+                          {currentQuiz.options.map((option, index) => (
+                            <TouchableOpacity
+                              key={index}
+                              style={[
+                                styles.optionButton,
+                                showExplanation &&
+                                  index === currentQuiz.correctAnswer &&
+                                  styles.optionButtonCorrect,
+                                showExplanation &&
+                                  index === selectedAnswer &&
+                                  index !== currentQuiz.correctAnswer &&
+                                  styles.optionButtonIncorrect,
+                                !showExplanation &&
+                                  selectedAnswer === index &&
+                                  styles.optionButtonSelected,
+                              ]}
+                              onPress={() => handleAnswerSelect(index)}
+                              disabled={showExplanation}
+                            >
+                              <View style={styles.optionContent}>
+                                <Text style={styles.optionText}>{option}</Text>
+                                {showExplanation && index === currentQuiz.correctAnswer && (
+                                  <Ionicons name="checkmark-circle" size={20} color="#059669" />
+                                )}
+                                {showExplanation &&
+                                  index === selectedAnswer &&
+                                  index !== currentQuiz.correctAnswer && (
+                                    <Ionicons name="close-circle" size={20} color="#DC2626" />
+                                  )}
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {/* Explanation */}
+                        {showExplanation && (
+                          <View style={styles.explanationBox}>
+                            <Text style={styles.explanationText}>
+                              <Text style={styles.explanationBold}>Explanation:</Text>{" "}
+                              {currentQuiz.explanation}
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Next Button */}
+                        {showExplanation && (
+                          <Button
+                            onPress={handleNextQuestion}
+                            style={styles.nextButton}
+                          >
+                            <Text style={styles.nextButtonText}>
+                              {currentQuizIndex < currentQuizQuestions.length - 1
+                                ? "Next Question"
+                                : "Finish Quiz"}
+                            </Text>
+                          </Button>
+                        )}
+                      </View>
+                    </Card>
+                  </>
+                )}
               </>
             ) : (
               /* Quiz Complete */
@@ -565,15 +689,15 @@ export default function InteractiveToolsScreen() {
                   <Text style={styles.completeScore}>
                     You scored{" "}
                     <Text style={styles.completeScoreHighlight}>
-                      {score}/{theoryQuizzes.length}
+                      {score}/{currentQuizQuestions.length}
                     </Text>
                   </Text>
                   <Progress
-                    value={(score / theoryQuizzes.length) * 100}
+                    value={(score / currentQuizQuestions.length) * 100}
                     style={styles.completeProgress}
                   />
                   <Button onPress={handleRestartQuiz} style={styles.restartButton}>
-                    <Text style={styles.restartButtonText}>Try Again</Text>
+                    <Text style={styles.restartButtonText}>Take Another Quiz</Text>
                   </Button>
                 </View>
               </Card>
@@ -1005,6 +1129,98 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+  selectionCard: {
+    padding: 24,
+    marginBottom: 16,
+  },
+  selectionContent: {
+    gap: 24,
+    alignItems: "center",
+  },
+  selectionIcon: {
+    marginBottom: 8,
+  },
+  selectionTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#333",
+    textAlign: "center",
+  },
+  selectionSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  selectionSection: {
+    width: "100%",
+    gap: 12,
+  },
+  selectionLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    textAlign: "center",
+  },
+  difficultyButtons: {
+    gap: 12,
+  },
+  difficultyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#E5E5E5",
+    backgroundColor: "#F9F9F9",
+  },
+  difficultyButtonSelected: {
+    borderColor: "#FF6A5C",
+    backgroundColor: "#FFF5F3",
+  },
+  difficultyButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#666",
+  },
+  difficultyButtonTextSelected: {
+    color: "#FF6A5C",
+  },
+  lengthButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  lengthButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#E5E5E5",
+    backgroundColor: "#F9F9F9",
+    alignItems: "center",
+  },
+  lengthButtonSelected: {
+    borderColor: "#FF6A5C",
+    backgroundColor: "#FFF5F3",
+  },
+  lengthButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#666",
+  },
+  lengthButtonTextSelected: {
+    color: "#FF6A5C",
+  },
+  startQuizButton: {
+    width: "100%",
+    marginTop: 8,
+  },
+  startQuizButtonText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 18,
   },
 });
 

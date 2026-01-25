@@ -44,7 +44,8 @@ export default function StudentPortfolioScreen() {
   // Get student data from params
   const studentId = getParam("studentId", "");
   const student = {
-    _id: studentId,
+    id: studentId,
+    _id: studentId, // Legacy support
     name: getParam("studentName", "Student Name"),
     instrument: getParam("instrument", "Piano"),
     image: getParam("image", ""),
@@ -72,8 +73,8 @@ export default function StudentPortfolioScreen() {
           if (!booking.student) return false;
           
           // Check if student is populated object or just ID
-          const bookingStudentId = booking.student._id 
-            ? String(booking.student._id) 
+          const bookingStudentId = booking.student?.id || booking.student?._id
+            ? String(booking.student.id || booking.student._id) 
             : String(booking.student);
           
           return bookingStudentId === String(studentId);
@@ -155,7 +156,7 @@ export default function StudentPortfolioScreen() {
     }
 
     return {
-      id: booking._id || String(index),
+      id: booking.id || booking._id || String(index),
       date: booking.day || booking.createdAt || "",
       topic: `${student.instrument} Lesson`,
       notes: `Status: ${booking.status === "approved" ? "Confirmed" : booking.status === "pending" ? "Pending" : "Rejected"}`,
@@ -452,7 +453,7 @@ export default function StudentPortfolioScreen() {
                     </Card>
                   ) : (
                     practiceSessions.slice(0, 10).map((session) => (
-                      <Card key={session._id} style={styles.practiceSessionCard}>
+                      <Card key={session.id || session._id} style={styles.practiceSessionCard}>
                         <View style={styles.practiceSessionRow}>
                           <View style={styles.practiceSessionInfo}>
                             <Ionicons name="time-outline" size={16} color="#FF6A5C" />

@@ -31,7 +31,8 @@ import { api } from "../../lib/api";
 import { getStoredUser } from "../../lib/auth";
 
 interface CommunityPost {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   title: string;
   description: string;
   mediaUrl: string;
@@ -40,7 +41,8 @@ interface CommunityPost {
   instrument: string;
   level: "Beginner" | "Intermediate" | "Advanced";
   author: {
-    _id: string;
+    id: string;
+    _id?: string; // Legacy support
     name: string;
     profileImage?: string;
     role: "student" | "teacher";
@@ -48,11 +50,13 @@ interface CommunityPost {
   likeCount: number;
   commentCount: number;
   isLiked: boolean;
-  likes: Array<{ _id: string; name: string }>;
+  likes: Array<{ id: string; _id?: string; name: string }>;
   comments: Array<{
-    _id: string;
+    id: string;
+    _id?: string; // Legacy support
     author: {
-      _id: string;
+      id: string;
+      _id?: string; // Legacy support
       name: string;
       profileImage?: string;
     };
@@ -192,7 +196,7 @@ export default function CommunityScreen() {
           pages: old.pages.map((page: any) => ({
             ...page,
             posts: page.posts.map((post: CommunityPost) =>
-              post._id === postId
+              (post.id || post._id) === postId
                 ? {
                     ...post,
                     isLiked: !post.isLiked,
@@ -220,7 +224,7 @@ export default function CommunityScreen() {
           pages: old.pages.map((page: any) => ({
             ...page,
             posts: page.posts.map((post: CommunityPost) =>
-              post._id === postId
+              (post.id || post._id) === postId
                 ? {
                     ...post,
                     isLiked: response.isLiked,
@@ -276,7 +280,7 @@ export default function CommunityScreen() {
     }
 
     const trimmedText = commentText.trim();
-    commentMutation.mutate({ postId: selectedPost._id, text: trimmedText });
+    commentMutation.mutate({ postId: selectedPost.id || selectedPost._id, text: trimmedText });
   };
 
   const pickMedia = async (type: "video" | "audio" | "image") => {
@@ -579,7 +583,7 @@ export default function CommunityScreen() {
       <View style={styles.postActions}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => handleLike(post._id)}
+          onPress={() => handleLike(post.id || post._id)}
         >
           <Ionicons
             name={post.isLiked ? "heart" : "heart-outline"}
@@ -610,7 +614,7 @@ export default function CommunityScreen() {
   ), []);
 
   // Key extractor for FlatList
-  const keyExtractor = useCallback((item: CommunityPost) => item._id, []);
+  const keyExtractor = useCallback((item: CommunityPost) => item.id || item._id, []);
 
   // Get item layout for better FlatList performance (approximate post height: 500px)
   const getItemLayout = useCallback(
@@ -1014,7 +1018,7 @@ export default function CommunityScreen() {
                 <Text style={styles.noCommentsText}>No comments yet</Text>
               ) : (
                 selectedPost?.comments.map((comment) => (
-                  <View key={comment._id} style={styles.commentItem}>
+                  <View key={comment.id || comment._id} style={styles.commentItem}>
                     <View style={styles.commentAuthor}>
                       {comment.author.profileImage ? (
                         <Image

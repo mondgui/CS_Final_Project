@@ -22,30 +22,35 @@ import { api } from "../../lib/api";
 import { getStoredUser } from "../../lib/auth";
 
 interface Resource {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   title: string;
   description: string;
   fileUrl: string;
   externalUrl: string;
+  fileName?: string; // Original filename from user's device
   fileType: "pdf" | "image" | "audio" | "video" | "link";
   fileSize: number;
   instrument: string;
   level: "Beginner" | "Intermediate" | "Advanced";
   category: string;
   uploadedBy: {
-    _id: string;
+    id: string;
+    _id?: string; // Legacy support
     name: string;
     profileImage?: string;
   };
   assignedTo?: Array<{
-    _id: string;
+    id: string;
+    _id?: string; // Legacy support
     name: string;
     email?: string;
     profileImage?: string;
   }>;
   assignments?: Array<{
     student: {
-      _id: string;
+      id: string;
+      _id?: string; // Legacy support
       name: string;
       email?: string;
       profileImage?: string;
@@ -98,7 +103,8 @@ const CATEGORY_OPTIONS = [
  * 2 Tabs: My Resources, Assignments
  */
 interface Student {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   name: string;
   email: string;
   profileImage?: string;
@@ -189,12 +195,13 @@ export default function TeacherResourcesScreen() {
         const bookings = await api("/api/bookings/teacher/me", { auth: true });
         (Array.isArray(bookings) ? bookings : []).forEach((booking: any) => {
           if (booking.student) {
-            const student = booking.student._id ? booking.student : booking.student;
-            const studentId = student._id ? String(student._id) : String(student);
+            const student = booking.student?.id || booking.student?._id ? booking.student : booking.student;
+            const studentId = student?.id || student?._id ? String(student.id || student._id) : String(student);
             
             if (!studentMap.has(studentId)) {
               studentMap.set(studentId, {
-                _id: studentId,
+                id: studentId,
+                _id: studentId, // Legacy support
                 name: student.name || "Student",
                 email: student.email || "",
                 profileImage: student.profileImage || "",
@@ -211,13 +218,14 @@ export default function TeacherResourcesScreen() {
         const inquiries = await api("/api/inquiries/teacher/me", { auth: true });
         (Array.isArray(inquiries) ? inquiries : []).forEach((inquiry: any) => {
           if (inquiry.student) {
-            const student = inquiry.student._id ? inquiry.student : inquiry.student;
-            const studentId = student._id ? String(student._id) : String(student);
+            const student = inquiry.student?.id || inquiry.student?._id ? inquiry.student : inquiry.student;
+            const studentId = student?.id || student?._id ? String(student.id || student._id) : String(student);
             
             // Only add if not already in map (bookings take priority for profileImage)
             if (!studentMap.has(studentId)) {
               studentMap.set(studentId, {
-                _id: studentId,
+                id: studentId,
+                _id: studentId, // Legacy support
                 name: student.name || "Student",
                 email: student.email || "",
                 profileImage: student.profileImage || "",
@@ -301,6 +309,7 @@ export default function TeacherResourcesScreen() {
         description: description || "",
         fileUrl: selectedFile ? fileUrl : "",
         externalUrl: selectedFile ? "" : fileUrl,
+        fileName: selectedFile ? (selectedFile.name || "") : (externalUrl || ""),
         fileType,
         fileSize,
         instrument,
@@ -407,15 +416,15 @@ export default function TeacherResourcesScreen() {
     setSelectedResourceForAssign(resource);
     // Pre-select already assigned students
     const assignedIds = (resource.assignedTo || []).map((s: any) => 
-      s._id ? String(s._id) : String(s)
+      s.id || s._id ? String(s.id || s._id) : String(s)
     );
     setSelectedStudentIds(assignedIds);
     // Load existing notes if any
     if (resource.assignments && Array.isArray(resource.assignments)) {
       const notesMap: Record<string, string> = {};
       resource.assignments.forEach((assignment: any) => {
-        if (assignment.student && assignment.student._id) {
-          notesMap[assignment.student._id] = assignment.note || "";
+        if (assignment.student && (assignment.student.id || assignment.student._id)) {
+          notesMap[assignment.student.id || assignment.student._id] = assignment.note || "";
         }
       });
       setAssignmentNotes(notesMap);
@@ -439,7 +448,7 @@ export default function TeacherResourcesScreen() {
         notes[studentId] = assignmentNotes[studentId] || "";
       });
 
-      await api(`/api/resources/${selectedResourceForAssign._id}/assign`, {
+      await api(`/api/resources/${selectedResourceForAssign.id || selectedResourceForAssign._id}/assign`, {
         method: "POST",
         auth: true,
         body: JSON.stringify({ studentIds: selectedStudentIds, notes }),
@@ -535,7 +544,7 @@ export default function TeacherResourcesScreen() {
     }
 
     return (
-      <Card key={resource._id} style={styles.resourceCard}>
+      <Card key={resource.id || resource._id} style={styles.resourceCard}>
         <View style={styles.resourceRow}>
           <View style={styles.resourceIcon}>
             {getIcon(resource.fileType)}
@@ -554,7 +563,7 @@ export default function TeacherResourcesScreen() {
             
             {/* Show assignments with notes */}
             {resource.assignments.map((assignment) => (
-              <View key={assignment.student._id} style={styles.assignmentItem}>
+              <View key={assignment.student.id || assignment.student._id} style={styles.assignmentItem}>
                 <View style={styles.assignmentHeader}>
                   <View style={styles.studentInfo}>
                     <View style={styles.studentAvatar}>
@@ -571,13 +580,13 @@ export default function TeacherResourcesScreen() {
                   {assignment.note && (
                     <View style={styles.noteActions}>
                       <TouchableOpacity
-                        onPress={() => openEditNoteModal(resource._id, assignment.student._id, assignment.note)}
+                        onPress={() => openEditNoteModal((resource.id || resource._id) as string, (assignment.student.id || assignment.student._id) as string, assignment.note)}
                         style={styles.noteActionButton}
                       >
                         <Ionicons name="create-outline" size={16} color="#FF6A5C" />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        onPress={() => deleteAssignmentNote(resource._id, assignment.student._id)}
+                        onPress={() => deleteAssignmentNote((resource.id || resource._id) as string, (assignment.student.id || assignment.student._id) as string)}
                         style={styles.noteActionButton}
                       >
                         <Ionicons name="trash-outline" size={16} color="#DC2626" />
@@ -592,7 +601,7 @@ export default function TeacherResourcesScreen() {
                 ) : (
                   <TouchableOpacity
                     style={styles.addNoteButton}
-                    onPress={() => openEditNoteModal(resource._id, assignment.student._id, "")}
+                    onPress={() => openEditNoteModal((resource.id || resource._id) as string, (assignment.student.id || assignment.student._id) as string, "")}
                   >
                     <Ionicons name="add-circle-outline" size={16} color="#FF6A5C" />
                     <Text style={styles.addNoteText}>Add note for {assignment.student.name}</Text>
@@ -606,20 +615,47 @@ export default function TeacherResourcesScreen() {
     );
   };
 
-  const renderResourceCard = (resource: Resource) => (
-    <Card key={resource._id} style={styles.resourceCard}>
-      <View style={styles.resourceRow}>
-        <View style={styles.resourceIcon}>
-          {getIcon(resource.fileType)}
-        </View>
-        <View style={styles.resourceInfo}>
-          <Text style={styles.resourceName}>{resource.title}</Text>
-          {resource.description ? (
-            <Text style={styles.resourceDescription}>
-              {resource.description}
-            </Text>
-          ) : null}
-          <View style={styles.resourceMeta}>
+  // Helper function to extract filename from URL
+  const getFileName = (url: string): string => {
+    if (!url) return "";
+    try {
+      // Extract filename from URL
+      const urlParts = url.split("/");
+      const filename = urlParts[urlParts.length - 1].split("?")[0]; // Remove query params
+      // Decode URL-encoded filename
+      return decodeURIComponent(filename);
+    } catch {
+      // If URL parsing fails, return a shortened version
+      return url.length > 50 ? url.substring(0, 50) + "..." : url;
+    }
+  };
+
+  const renderResourceCard = (resource: Resource) => {
+    // Use stored fileName if available, otherwise extract from URL
+    const fileName = resource.fileName || getFileName(resource.fileUrl || resource.externalUrl || "");
+    
+    return (
+      <Card key={resource._id} style={styles.resourceCard}>
+        <View style={styles.resourceRow}>
+          <View style={styles.resourceIcon}>
+            {getIcon(resource.fileType)}
+          </View>
+          <View style={styles.resourceInfo}>
+            <Text style={styles.resourceName}>{resource.title}</Text>
+            {fileName ? (
+              <View style={styles.fileNameContainer}>
+                <Ionicons name="document-text-outline" size={14} color="#666" />
+                <Text style={styles.fileNameText} numberOfLines={1}>
+                  {fileName}
+                </Text>
+              </View>
+            ) : null}
+            {resource.description ? (
+              <Text style={styles.resourceDescription}>
+                {resource.description}
+              </Text>
+            ) : null}
+            <View style={styles.resourceMeta}>
             <Badge variant="default" style={styles.levelBadge}>
               {resource.level}
             </Badge>
@@ -660,7 +696,7 @@ export default function TeacherResourcesScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, styles.deleteButton]}
-              onPress={() => deleteResource(resource._id, resource.title)}
+              onPress={() => deleteResource((resource.id || resource._id) as string, resource.title)}
             >
               <Ionicons name="trash-outline" size={16} color="#DC2626" />
               <Text style={[styles.actionButtonText, { color: "#DC2626" }]}>
@@ -671,7 +707,8 @@ export default function TeacherResourcesScreen() {
         </View>
       </View>
     </Card>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -967,15 +1004,16 @@ export default function TeacherResourcesScreen() {
                     Select students to assign this resource to:
                   </Text>
                   {students.map((student) => {
-                    const isSelected = selectedStudentIds.includes(student._id);
+                    const studentId = (student.id || student._id) as string;
+                    const isSelected = selectedStudentIds.includes(studentId);
                     return (
-                      <View key={student._id}>
+                      <View key={studentId}>
                         <TouchableOpacity
                           style={[
                             styles.studentItem,
                             isSelected && styles.studentItemSelected,
                           ]}
-                          onPress={() => toggleStudentSelection(student._id)}
+                          onPress={() => toggleStudentSelection((student.id || student._id) as string)}
                         >
                           <View style={styles.studentInfo}>
                             <View style={styles.studentAvatar}>
@@ -1020,11 +1058,11 @@ export default function TeacherResourcesScreen() {
                             <TextInput
                               style={[styles.input, styles.noteInput]}
                               placeholder="e.g., Practice this daily for 15 minutes. Focus on..."
-                              value={assignmentNotes[student._id] || ""}
+                              value={assignmentNotes[(student.id || student._id) as string] || ""}
                               onChangeText={(text) =>
                                 setAssignmentNotes((prev) => ({
                                   ...prev,
-                                  [student._id]: text,
+                                  [(student.id || student._id) as string]: text,
                                 }))
                               }
                               multiline
@@ -1440,6 +1478,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: "#333",
+  },
+  fileNameContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  fileNameText: {
+    fontSize: 13,
+    color: "#666",
+    flex: 1,
   },
   fileButton: {
     flexDirection: "row",

@@ -57,7 +57,11 @@ export async function initSocket(): Promise<Socket | null> {
       
       // Disconnect existing socket if any
       if (socket) {
-        socket.removeAllListeners(); // Remove all listeners
+        // Only remove internal listeners, not application listeners
+        socket.removeAllListeners("connect");
+        socket.removeAllListeners("disconnect");
+        socket.removeAllListeners("connect_error");
+        socket.removeAllListeners("error");
         socket.disconnect();
         socket = null;
       }
@@ -71,7 +75,7 @@ export async function initSocket(): Promise<Socket | null> {
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionAttempts: 5,
-        forceNew: true, // Force new connection
+        forceNew: false, // Reuse connection if available
       });
 
       currentToken = token;

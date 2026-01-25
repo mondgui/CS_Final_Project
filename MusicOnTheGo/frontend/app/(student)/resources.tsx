@@ -25,7 +25,8 @@ import { api } from "../../lib/api";
 import { getStoredUser } from "../../lib/auth";
 
 interface Resource {
-  _id: string;
+  id: string;
+  _id?: string; // Legacy support
   title: string;
   description: string;
   fileUrl: string;
@@ -36,13 +37,15 @@ interface Resource {
   level: "Beginner" | "Intermediate" | "Advanced";
   category: string;
   uploadedBy: {
-    _id: string;
+    id: string;
+    _id?: string; // Legacy support
     name: string;
     profileImage?: string;
   };
   assignmentNote?: string;
   assignmentTeacher?: {
-    _id: string;
+    id: string;
+    _id?: string; // Legacy support
     name: string;
     profileImage?: string;
   };
@@ -370,7 +373,7 @@ export default function ResourcesScreen() {
 
 
   const renderResourceCard = (resource: Resource) => (
-    <Card key={resource._id} style={styles.resourceCard}>
+    <Card key={resource.id || resource._id} style={styles.resourceCard}>
       <View style={styles.resourceRow}>
         <View style={styles.resourceIcon}>
           {getIcon(resource.fileType)}
@@ -408,7 +411,7 @@ export default function ResourcesScreen() {
                 onPress={() =>
                   setExpandedNotes((prev) => ({
                     ...prev,
-                    [resource._id]: !prev[resource._id],
+                    [resource.id || resource._id]: !prev[resource.id || resource._id],
                   }))
                 }
               >
@@ -470,12 +473,12 @@ export default function ResourcesScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => toggleSave(resource._id)}
+              onPress={() => toggleSave(resource.id || resource._id)}
             >
               <Ionicons
-                name={savedResources.includes(resource._id) ? "bookmark" : "bookmark-outline"}
+                name={savedResources.includes(resource.id || resource._id) ? "bookmark" : "bookmark-outline"}
                 size={16}
-                color={savedResources.includes(resource._id) ? "#FF6A5C" : "#666"}
+                color={savedResources.includes(resource.id || resource._id) ? "#FF6A5C" : "#666"}
               />
             </TouchableOpacity>
           </View>
@@ -556,7 +559,7 @@ export default function ResourcesScreen() {
               </Card>
             ) : (
               personalFiles.map((file) => (
-                <Card key={file._id} style={styles.resourceCard}>
+                <Card key={file.id || file._id} style={styles.resourceCard}>
                   <View style={styles.resourceRow}>
                     <View style={styles.resourceIcon}>
                       {getIcon(file.fileType)}
@@ -617,7 +620,7 @@ export default function ResourcesScreen() {
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.actionButton}
-                          onPress={() => deletePersonalFile(file._id, file.title)}
+                          onPress={() => deletePersonalFile(file.id || file._id, file.title)}
                         >
                           <Ionicons
                             name="trash-outline"

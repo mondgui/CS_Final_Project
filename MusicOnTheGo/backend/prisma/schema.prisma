@@ -21,7 +21,12 @@ model User {
   // Profile fields
   instruments              String[] @default([])
   experience              String   @default("")
-  location                String   @default("")
+  location                String   @default("") // City, State/Province, Country (standardized)
+  city                    String   @default("")
+  state                   String   @default("")
+  country                 String   @default("")
+  latitude                Float?
+  longitude               Float?
   about                   String   @default("")
   profileImage            String   @default("")
   
@@ -67,6 +72,10 @@ model User {
   postComments            Comment[]
   sentInquiries           Inquiry[]        @relation("SentInquiries")
   receivedInquiries       Inquiry[]        @relation("ReceivedInquiries")
+  supportTickets          SupportTicket[]  @relation
+  handledSupportTickets   SupportTicket[]  @relation("SupportTicketAdmin")
+  supportTicketReplies    SupportTicketReply[] @relation("SupportTicketReplyAdmin") // Replies sent by this admin
+  deviceTokens            DeviceToken[]    // Push notification device tokens
   
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
@@ -151,14 +160,16 @@ model Message {
   text        String
   read        Boolean  @default(false)
   readAt      DateTime?
+  roomId      String?  // For efficient real-time filtering (format: "userId1_userId2" sorted)
   
   // Relations
   sender      User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   recipient   User     @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
+  @@index([roomId]) // Index for efficient real-time queries
   @@index([senderId, recipientId, createdAt(sort: Desc)])
   @@index([recipientId, read])
 }
@@ -235,6 +246,7 @@ model Resource {
   description String        @default("")
   fileUrl     String        @default("")
   externalUrl String        @default("")
+  fileName    String        @default("") // Original filename from user's device
   fileType    ResourceType
   fileSize    Int           @default(0)
   instrument  String
@@ -432,4 +444,76 @@ enum InquiryStatus {
   sent
   read
   responded
+}
+
+// Support Ticket model (for contact us / support messages)
+model SupportTicket {
+  id            String                @id @default(uuid())
+  userId        String?               // User who created the ticket (optional - for logged in users)
+  name          String                // Name from contact form
+  email         String                // Email from contact form
+  queryType     String                // Type of query (complaint, suggestion, bug, etc.)
+  subject       String                // Subject line
+  message       String                // Main message content
+  status        SupportStatus         @default(open)
+  adminReply    String?               @default("") // Admin's reply to the user (deprecated - use replies relation)
+  repliedAt     DateTime?             // When admin replied (deprecated - use replies relation)
+  resolvedAt    DateTime?             // When ticket was marked as resolved
+  adminId       String?               // Admin who handled the ticket
+  
+  // Relations
+  user          User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  admin         User?                 @relation("SupportTicketAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+  replies       SupportTicketReply[]  // All replies to this ticket
+
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([status])
+  @@index([userId])
+  @@index([email])
+  @@index([createdAt(sort: Desc)])
+}
+
+// Support Ticket Reply model - stores multiple replies per ticket
+model SupportTicketReply {
+  id            String        @id @default(uuid())
+  ticketId      String
+  adminId       String?       // Admin who sent the reply
+  reply         String        // Reply message
+  emailSent     Boolean       @default(false) // Whether email was sent to user
+  
+  // Relations
+  ticket        SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  admin         User?         @relation("SupportTicketReplyAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime      @default(now())
+
+  @@index([ticketId])
+  @@index([createdAt(sort: Desc)])
+}
+
+enum SupportStatus {
+  open
+  replied
+  resolved
+  closed
+}
+
+// Device Token model - stores push notification tokens for users
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique // Expo push token
+  platform  String   // "ios" or "android"
+  deviceId  String?  // Optional device identifier
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([token])
 }

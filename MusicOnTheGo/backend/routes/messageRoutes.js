@@ -1,7 +1,8 @@
-// backend/routes/messageRoutes.js
+// backend/routes/messageRoutes.js - Converted to use Prisma
 import express from "express";
-import Message from "../models/Message.js";
+import prisma from "../utils/prisma.js";
 import authMiddleware from "../middleware/authMiddleware.js";
+import { sendPushNotification } from "../utils/pushNotificationService.js";
 
 const router = express.Router();
 
@@ -15,32 +16,46 @@ router.get("/conversations", authMiddleware, async (req, res) => {
     const { page, limit } = req.query;
     const currentUserId = req.user.id;
 
-    // Get all messages where current user is sender or recipient
-    // Note: We still need all messages to build conversations, but we'll paginate the final list
-    const messages = await Message.find({
-      $or: [
-        { sender: currentUserId },
-        { recipient: currentUserId },
-      ],
-    })
-      .populate("sender", "name profileImage email")
-      .populate("recipient", "name profileImage email")
-      .sort({ createdAt: -1 });
+    // Get all messages where current user is sender or recipient (using Prisma)
+    const messages = await prisma.message.findMany({
+      where: {
+        OR: [
+          { senderId: currentUserId },
+          { recipientId: currentUserId },
+        ],
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            email: true,
+          },
+        },
+        recipient: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
     // Create a map of unique contacts with their last message
     const conversationsMap = new Map();
 
     messages.forEach((msg) => {
-      const otherUser = String(msg.sender._id) === String(currentUserId) 
-        ? msg.recipient 
-        : msg.sender;
-      
-      const otherUserId = String(otherUser._id);
-      const isOwnMessage = String(msg.sender._id) === String(currentUserId);
-      
+      const otherUser = msg.senderId === currentUserId ? msg.recipient : msg.sender;
+      const otherUserId = otherUser.id;
+      const isOwnMessage = msg.senderId === currentUserId;
+
       if (!conversationsMap.has(otherUserId)) {
         // Only count unread if message was sent TO current user (not by current user)
-        const isUnread = !isOwnMessage && msg.read === false;
+        const isUnread = !isOwnMessage && !msg.read;
         conversationsMap.set(otherUserId, {
           userId: otherUserId,
           name: otherUser.name || "Unknown",
@@ -53,11 +68,11 @@ router.get("/conversations", authMiddleware, async (req, res) => {
       } else {
         // Update unread count if this is an unread message sent TO current user
         const conversation = conversationsMap.get(otherUserId);
-        if (!isOwnMessage && msg.read === false) {
+        if (!isOwnMessage && !msg.read) {
           conversation.unreadCount += 1;
         }
         // Update last message if this is more recent
-        if (new Date(msg.createdAt) > new Date(conversation.lastMessageTime)) {
+        if (msg.createdAt > conversation.lastMessageTime) {
           conversation.lastMessage = msg.text;
           conversation.lastMessageTime = msg.createdAt;
         }
@@ -66,7 +81,7 @@ router.get("/conversations", authMiddleware, async (req, res) => {
 
     // Convert map to array and sort by last message time
     const allConversations = Array.from(conversationsMap.values())
-      .sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
+      .sort((a, b) => b.lastMessageTime.getTime() - a.lastMessageTime.getTime());
 
     // Pagination parameters
     const pageNum = parseInt(page) || 1;
@@ -105,9 +120,11 @@ router.get("/conversations", authMiddleware, async (req, res) => {
  */
 router.get("/unread-count", authMiddleware, async (req, res) => {
   try {
-    const count = await Message.countDocuments({
-      recipient: req.user.id,
-      read: false,
+    const count = await prisma.message.count({
+      where: {
+        recipientId: req.user.id,
+        read: false,
+      },
     });
 
     res.json({ count });
@@ -117,38 +134,76 @@ router.get("/unread-count", authMiddleware, async (req, res) => {
 });
 
 /**
+ * POST /api/messages/conversation/:userId/mark-read
+ * Mark all messages from this conversation (otherUser -> me) as read.
+ * Call when leaving the chat so the unread count only includes messages received while away.
+ */
+router.post("/conversation/:userId/mark-read", authMiddleware, async (req, res) => {
+  try {
+    const otherUserId = req.params.userId;
+    await prisma.message.updateMany({
+      where: {
+        senderId: otherUserId,
+        recipientId: req.user.id,
+        read: false,
+      },
+      data: { read: true, readAt: new Date() },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+/**
  * GET /api/messages/conversation/:userId
- * Get all messages between current user and another user
- * NOTE: This route must be defined AFTER /unread-count to prevent route collision
+ * Get all messages between current user and another user (also marks them read on load)
  */
 router.get("/conversation/:userId", authMiddleware, async (req, res) => {
   try {
     const currentUserId = req.user.id;
     const otherUserId = req.params.userId;
 
-    const messages = await Message.find({
-      $or: [
-        { sender: currentUserId, recipient: otherUserId },
-        { sender: otherUserId, recipient: currentUserId },
-      ],
-    })
-      .populate("sender", "name profileImage")
-      .populate("recipient", "name profileImage")
-      .sort({ createdAt: 1 });
+    const messages = await prisma.message.findMany({
+      where: {
+        OR: [
+          { senderId: currentUserId, recipientId: otherUserId },
+          { senderId: otherUserId, recipientId: currentUserId },
+        ],
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+        recipient: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
 
     // Mark messages as read if they were sent to current user
-    await Message.updateMany(
-      {
-        sender: otherUserId,
-        recipient: currentUserId,
+    await prisma.message.updateMany({
+      where: {
+        senderId: otherUserId,
+        recipientId: currentUserId,
         read: false,
       },
-      {
+      data: {
         read: true,
         readAt: new Date(),
-      }
-    );
+      },
+    });
 
+    // Unread count updates are delivered via Supabase Realtime (Message UPDATE events)
     res.json(messages);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -157,7 +212,7 @@ router.get("/conversation/:userId", authMiddleware, async (req, res) => {
 
 /**
  * POST /api/messages
- * Send a new message
+ * Send a new message (Supabase Realtime handles real-time updates)
  */
 router.post("/", authMiddleware, async (req, res) => {
   try {
@@ -167,21 +222,64 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Recipient ID and message text are required." });
     }
 
-    const message = await Message.create({
-      sender: req.user.id,
-      recipient: recipientId,
-      text: text.trim(),
+    // Verify recipient exists
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientId },
     });
 
-    const populatedMessage = await Message.findById(message._id)
-      .populate("sender", "name profileImage")
-      .populate("recipient", "name profileImage");
+    if (!recipient) {
+      return res.status(404).json({ message: "Recipient not found." });
+    }
 
-    res.status(201).json(populatedMessage);
+    // Create roomId for efficient real-time filtering (sorted user IDs)
+    const roomId = [req.user.id, recipientId].sort().join('_');
+
+    // Create message using Prisma (Supabase Realtime delivers INSERT to chat and messages list)
+    const message = await prisma.message.create({
+      data: {
+        senderId: req.user.id,
+        recipientId: recipientId,
+        text: text.trim(),
+        read: false,
+        roomId: roomId,
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+        recipient: {
+          select: {
+            id: true,
+            name: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
+
+    // Send push notification to recipient
+    const messagePreview = text.trim().length > 50 
+      ? text.trim().substring(0, 50) + "..." 
+      : text.trim();
+
+    await sendPushNotification(recipientId, {
+      title: message.sender.name,
+      body: messagePreview,
+      data: {
+        type: "message",
+        senderId: req.user.id,
+        roomId: roomId,
+      },
+    });
+
+    res.status(201).json(message);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
 export default router;
-
