@@ -186,13 +186,18 @@ router.post('/forgot-password', async (req, res) => {
     if (user) {
       // Generate reset token
       const resetToken = crypto.randomBytes(32).toString('hex');
+      // Store a hash of the token (safer if DB is ever leaked)
+      const resetTokenHash = crypto
+        .createHash('sha256')
+        .update(resetToken)
+        .digest('hex');
       const resetExpires = new Date(Date.now() + 3600000); // 1 hour
 
       // Save token to database
       await prisma.user.update({
         where: { id: user.id },
         data: {
-          resetPasswordToken: resetToken,
+          resetPasswordToken: resetTokenHash,
           resetPasswordExpires: resetExpires,
         },
       });
@@ -238,11 +243,13 @@ router.post('/reset-password', async (req, res) => {
       });
     }
 
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
     // Find user with valid reset token
     const user = await prisma.user.findFirst({
       where: {
         email: email.toLowerCase(),
-        resetPasswordToken: token,
+        resetPasswordToken: tokenHash,
         resetPasswordExpires: {
           gt: new Date(),
         },

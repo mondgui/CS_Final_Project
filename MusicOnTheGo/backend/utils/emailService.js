@@ -12,7 +12,10 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function sendPasswordResetEmail(email, resetToken) {
-  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:8081'}/reset-password?token=${resetToken}&email=${email}`;
+  const base = process.env.FRONTEND_URL || 'musiconthego://';
+  // If base ends with :// (custom scheme), don't add a slash. Otherwise ensure exactly one trailing slash.
+  const prefix = base.endsWith('://') ? base : `${base.replace(/\/+$/, '')}/`;
+  const resetUrl = `${prefix}reset-password?token=${encodeURIComponent(resetToken)}&email=${encodeURIComponent(email)}`;
   
   const mailOptions = {
     from: process.env.EMAIL_FROM || 'musiconthego.app@gmail.com',
@@ -20,8 +23,8 @@ export async function sendPasswordResetEmail(email, resetToken) {
     subject: 'Password Reset Request - MusicOnTheGo',
     html: `
       <h2>Password Reset Request</h2>
-      <p>You requested a password reset. Click the link below to reset your password:</p>
-      <a href="${resetUrl}">${resetUrl}</a>
+      <p>You requested a password reset. Open this link on a phone where the MusicOnTheGo app is installed:</p>
+      <p><a href="${resetUrl}">${resetUrl}</a></p>
       <p>This link will expire in 1 hour.</p>
       <p>If you didn't request this, please ignore this email.</p>
     `,

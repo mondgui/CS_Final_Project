@@ -74,7 +74,8 @@ INSERT INTO "User" (id, email, password, name, role, "createdAt", "updatedAt")
 VALUES (
   gen_random_uuid(),
   'admin@example.com',
-  '$2a$10$...' -- bcrypt hashed password
+  -- bcrypt hashed password (example placeholder)
+  '$2a$10$...',
   'Admin User',
   'admin',
   NOW(),
