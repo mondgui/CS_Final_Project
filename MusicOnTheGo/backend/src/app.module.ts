@@ -6,14 +6,15 @@ import { UsersModule } from './users/users.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { MessagesModule } from './messages/messages.module';
 import { AvailabilityModule } from './availability/availability.module';
-import { PracticeModule } from './practice/practice.module';
-import { ResourcesModule } from './resources/resources.module';
 import { CommunityModule } from './community/community.module';
+import { ResourcesModule } from './resources/resources.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { InquiriesModule } from './inquiries/inquiries.module';
-import { AdminModule } from './admin/admin.module';
+import { PracticeModule } from './practice/practice.module';
 import { UploadModule } from './upload/upload.module';
-import { ChatGateway } from './chat/chat.gateway';
+import { AdminModule } from './admin/admin.module';
+import { WebSocketModule } from './websocket/websocket.module';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -26,14 +27,15 @@ import { ChatGateway } from './chat/chat.gateway';
     BookingsModule,
     MessagesModule,
     AvailabilityModule,
-    PracticeModule,
-    ResourcesModule,
     CommunityModule,
+    ResourcesModule,
     ReviewsModule,
     InquiriesModule,
-    AdminModule,
+    PracticeModule,
     UploadModule,
+    AdminModule,
+    WebSocketModule,
   ],
-  providers: [ChatGateway],
+  controllers: [AppController],
 })
 export class AppModule {}

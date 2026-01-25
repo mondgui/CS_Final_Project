@@ -1,13 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
-import * as cors from 'cors';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Enable CORS
-  app.use(cors());
+  app.enableCors({
+    origin: true,
+    credentials: true,
+  });
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -22,9 +24,11 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   const port = process.env.PORT || 5050;
-  await app.listen(port);
+  const host = process.env.HOST || '0.0.0.0'; // Listen on all interfaces for network access
+  await app.listen(port, host);
   console.log(`🚀 Server running on port ${port}`);
   console.log(`📝 API available at http://localhost:${port}/api`);
+  console.log(`🌐 Network access: http://${host === '0.0.0.0' ? 'YOUR_IP' : host}:${port}/api`);
 }
 
 bootstrap();
