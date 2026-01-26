@@ -296,6 +296,7 @@ export default function EditProfileScreen() {
           <TextInput
             style={styles.input}
             placeholder="Enter your full name"
+            placeholderTextColor="#6B7280"
             value={name}
             onChangeText={setName}
           />
@@ -307,6 +308,7 @@ export default function EditProfileScreen() {
             value={email}
             editable={false}
             placeholder="Email cannot be changed"
+            placeholderTextColor="#6B7280"
           />
 
           {/* Instruments */}
@@ -338,6 +340,7 @@ export default function EditProfileScreen() {
           <TextInput
             style={styles.input}
             placeholder="e.g. San Francisco, CA"
+            placeholderTextColor="#6B7280"
             value={location}
             onChangeText={setLocation}
           />
@@ -371,6 +374,7 @@ export default function EditProfileScreen() {
           <TextInput
             style={styles.input}
             placeholder="e.g. 45"
+            placeholderTextColor="#6B7280"
             value={rate}
             onChangeText={setRate}
             keyboardType="numeric"
@@ -399,6 +403,7 @@ export default function EditProfileScreen() {
             <TextInput
               style={styles.customSpecialtyInput}
               placeholder="Add your own specialty..."
+              placeholderTextColor="#6B7280"
               value={customSpecialty}
               onChangeText={setCustomSpecialty}
               onSubmitEditing={addCustomSpecialty}
@@ -438,6 +443,7 @@ export default function EditProfileScreen() {
             multiline
             numberOfLines={5}
             placeholder="Tell students about your experience, teaching style, specialties, etc."
+            placeholderTextColor="#6B7280"
             value={about}
             onChangeText={setAbout}
           />
@@ -560,6 +566,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E5E5",
     fontSize: 16,
+    color: "#111827",
   },
   inputDisabled: {
     backgroundColor: "#F5F5F5",
@@ -580,6 +587,7 @@ const styles = StyleSheet.create({
     height: 120,
     textAlignVertical: "top",
     fontSize: 16,
+    color: "#111827",
   },
   chipRow: {
     flexDirection: "row",
@@ -613,6 +621,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E5E5",
     fontSize: 14,
+    color: "#111827",
   },
   addCustomButton: {
     backgroundColor: "#FF6A5C",

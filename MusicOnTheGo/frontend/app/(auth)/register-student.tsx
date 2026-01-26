@@ -192,6 +192,7 @@ export default function RegisterStudent() {
           <TextInput
             style={styles.input}
             placeholder="Enter your name"
+            placeholderTextColor="#6B7280"
             value={fullName}
             onChangeText={setFullName}
           />
@@ -200,6 +201,7 @@ export default function RegisterStudent() {
           <TextInput
             style={styles.input}
             placeholder="your@email.com"
+            placeholderTextColor="#6B7280"
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -212,6 +214,7 @@ export default function RegisterStudent() {
               style={styles.passwordInput}
               secureTextEntry={!showPassword}
               placeholder="Create a password"
+              placeholderTextColor="#6B7280"
               value={password}
               onChangeText={setPassword}
               autoCapitalize="none"
@@ -234,6 +237,7 @@ export default function RegisterStudent() {
               style={styles.passwordInput}
               secureTextEntry={!showConfirmPassword}
               placeholder="Confirm your password"
+              placeholderTextColor="#6B7280"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               autoCapitalize="none"
@@ -282,6 +286,7 @@ export default function RegisterStudent() {
           <TextInput
             style={styles.input}
             placeholder="e.g. Viola, Bassoon, Marimba, ukulele, etc."
+            placeholderTextColor="#6B7280"
             value={otherInstrument}
             onChangeText={setOtherInstrument}
           />
@@ -291,6 +296,7 @@ export default function RegisterStudent() {
             <TextInput
               style={[styles.input, styles.locationInput]}
               placeholder="City, State, Country"
+              placeholderTextColor="#6B7280"
               value={location}
               onChangeText={setLocation}
               editable={!locationLoading}
@@ -370,6 +376,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     borderColor: "#E0E0E0",
+    color: "#111827",
   },
   passwordInputWrapper: {
     flexDirection: "row",
@@ -384,6 +391,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 14,
     fontSize: 16,
+    color: "#111827",
   },
   eyeIcon: {
     padding: 4,

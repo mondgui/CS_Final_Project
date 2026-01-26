@@ -19,6 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { initSocket } from "../../../lib/socket";
 import { getSupabaseClient } from "../../../lib/supabase";
 import type { Socket } from "socket.io-client";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ScheduleBookingsTab, { type Booking } from "./_tabs/ScheduleBookingsTab";
 import TimesTab from "./_tabs/TimesTab";
@@ -53,6 +54,7 @@ export default function TeacherDashboard() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [innerTab, setInnerTab] = useState<string>("schedule-bookings");
   
@@ -501,7 +503,7 @@ export default function TeacherDashboard() {
       {/* Scrollable content */}
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 96 + insets.bottom }}
       >
         {/* Gradient Header */}
         <LinearGradient colors={["#FF9076", "#FF6A5C"]} style={styles.header}>
@@ -726,8 +728,9 @@ type BottomTabBarProps = {
 };
 
 function BottomTabBar({ activeTab, setActiveTab }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.tabBar}>
+    <View style={[styles.tabBar, { bottom: 12 + insets.bottom }]}>
       {TABS.map((tab) => {
         const isActive = tab.key === activeTab;
 

@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../lib/api";
 import { getStoredUser } from "../../lib/auth";
 
@@ -96,6 +97,7 @@ const LEVEL_OPTIONS = ["All", "Beginner", "Intermediate", "Advanced"];
 export default function CommunityScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<"all" | "students" | "teachers" | "myPosts">("all");
   const [selectedInstrument, setSelectedInstrument] = useState("All");
   const [customInstrument, setCustomInstrument] = useState("");
@@ -773,7 +775,7 @@ export default function CommunityScreen() {
           keyExtractor={keyExtractor}
           getItemLayout={getItemLayout}
           style={styles.content}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom }]}
           showsVerticalScrollIndicator={false}
           // Performance optimizations
           removeClippedSubviews={true}
@@ -808,7 +810,7 @@ export default function CommunityScreen() {
 
       {/* Create Post Button */}
       <TouchableOpacity
-        style={styles.createButton}
+        style={[styles.createButton, { bottom: 24 + insets.bottom }]}
         onPress={() => setShowPostModal(true)}
       >
         <Ionicons name="add" size={24} color="white" />
@@ -852,6 +854,7 @@ export default function CommunityScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="e.g., My Piano Performance"
+                placeholderTextColor="#6B7280"
                 value={postTitle}
                 onChangeText={setPostTitle}
               />
@@ -860,6 +863,7 @@ export default function CommunityScreen() {
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="Tell us about your performance..."
+                placeholderTextColor="#6B7280"
                 value={postDescription}
                 onChangeText={setPostDescription}
                 multiline
@@ -1051,6 +1055,7 @@ export default function CommunityScreen() {
               <TextInput
                 style={styles.commentInput}
                 placeholder="Write a comment..."
+                placeholderTextColor="#6B7280"
                 value={commentText}
                 onChangeText={setCommentText}
                 multiline
@@ -1452,6 +1457,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E5E5",
     marginBottom: 12,
+    color: "#111827",
   },
   textArea: {
     minHeight: 80,
@@ -1596,6 +1602,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     maxHeight: 100,
+    color: "#111827",
   },
   sendButton: {
     padding: 8,

@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../../lib/api";
 import { storage } from "../../../lib/storage";
 import { getSupabaseClient } from "../../../lib/supabase";
@@ -61,6 +62,7 @@ const TABS: TabConfig[] = [
 export default function StudentDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabKey>("home");
 
   // Load user with React Query
@@ -286,7 +288,7 @@ export default function StudentDashboard() {
       {/* Scrollable content */}
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 96 + insets.bottom }}
       >
         {/* Gradient Header */}
         <LinearGradient colors={["#FF9076", "#FF6A5C"]} style={styles.header}>
@@ -365,8 +367,9 @@ type BottomTabBarProps = {
 };
 
 function BottomTabBar({ activeTab, setActiveTab }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.tabBar}>
+    <View style={[styles.tabBar, { bottom: 12 + insets.bottom }]}>
       {TABS.map((tab) => {
         const isActive = tab.key === activeTab;
 

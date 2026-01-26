@@ -5,6 +5,7 @@ import { LogBox } from 'react-native';
 import 'react-native-reanimated';
 import { useColorScheme } from '../hooks/use-color-scheme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Suppress specific warnings
 if (__DEV__) {
@@ -37,26 +38,28 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
+      <SafeAreaProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Stack screenOptions={{ headerShown: false }}>
 
-          {/* Public screens */}
-          <Stack.Screen name="index" />
-          <Stack.Screen name="role-selection" />
+            {/* Public screens */}
+            <Stack.Screen name="index" />
+            <Stack.Screen name="role-selection" />
+            
+            {/* Route groups */}
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(student)" />
+            <Stack.Screen name="(teacher)" />
+            <Stack.Screen name="booking" />
+            <Stack.Screen name="messages" />
+
           
-          {/* Route groups */}
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(student)" />
-          <Stack.Screen name="(teacher)" />
-          <Stack.Screen name="booking" />
-          <Stack.Screen name="messages" />
 
-          
+          </Stack>
 
-        </Stack>
-
-        <StatusBar style="auto" />
-      </ThemeProvider>
+          <StatusBar style="auto" />
+        </ThemeProvider>
+      </SafeAreaProvider>
     </QueryClientProvider>
   );
 }

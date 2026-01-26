@@ -213,6 +213,7 @@ export default function ContactSupportScreen() {
               </Label>
               <TextInput
                 placeholder="Please describe your query in detail..."
+                placeholderTextColor="#6B7280"
                 value={formData.message}
                 onChangeText={(value) => handleInputChange("message", value)}
                 multiline
@@ -358,6 +359,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
+    color: "#111827",
     minHeight: 150,
     textAlignVertical: "top",
   },

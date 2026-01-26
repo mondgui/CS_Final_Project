@@ -448,6 +448,7 @@ export default function ChatScreen() {
           <TextInput
             style={styles.input}
             placeholder="Type a message..."
+            placeholderTextColor="#6B7280"
             value={message}
             onChangeText={setMessage}
             multiline
@@ -631,6 +632,7 @@ const styles = StyleSheet.create({
     maxHeight: 100,
     borderWidth: 1,
     borderColor: "#E5E5E5",
+    color: "#111827",
   },
   sendButton: {
     width: 44,

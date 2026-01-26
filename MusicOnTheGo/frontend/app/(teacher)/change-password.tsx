@@ -106,6 +106,7 @@ export default function ChangePasswordScreen() {
               <TextInput
                 style={styles.passwordInput}
                 placeholder="Enter your current password"
+                placeholderTextColor="#6B7280"
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
                 secureTextEntry={!showCurrentPassword}
@@ -130,6 +131,7 @@ export default function ChangePasswordScreen() {
               <TextInput
                 style={styles.passwordInput}
                 placeholder="Enter your new password"
+                placeholderTextColor="#6B7280"
                 value={newPassword}
                 onChangeText={setNewPassword}
                 secureTextEntry={!showNewPassword}
@@ -155,6 +157,7 @@ export default function ChangePasswordScreen() {
               <TextInput
                 style={styles.passwordInput}
                 placeholder="Confirm your new password"
+                placeholderTextColor="#6B7280"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirmPassword}
@@ -249,6 +252,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     fontSize: 16,
+    color: "#111827",
   },
   eyeIcon: {
     padding: 8,
