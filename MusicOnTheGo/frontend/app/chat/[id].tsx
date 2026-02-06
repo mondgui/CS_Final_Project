@@ -13,6 +13,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../lib/api";
 import { getSupabaseClient } from "../../lib/supabase";
 import { Avatar, AvatarImage, AvatarFallback } from "../../components/ui/avatar";
@@ -33,6 +34,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
   
   const contactId = params.id as string;
@@ -443,7 +445,7 @@ export default function ChatScreen() {
       )}
 
       {/* Input Area */}
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { paddingBottom: 12 + insets.bottom }]}>
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.input}
@@ -614,8 +616,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#E5E5E5",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingBottom: Platform.OS === "ios" ? 20 : 12,
+    paddingTop: 12,
   },
   inputWrapper: {
     flexDirection: "row",

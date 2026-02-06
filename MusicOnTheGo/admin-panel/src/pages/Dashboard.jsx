@@ -134,7 +134,7 @@ export default function Dashboard() {
   const bookingStatusData = [
     { name: 'Approved', value: stats?.approvedBookings || 0 },
     { name: 'Pending', value: stats?.pendingBookings || 0 },
-    { name: 'Rejected', value: (stats?.totalBookings || 0) - (stats?.approvedBookings || 0) - (stats?.pendingBookings || 0) },
+    { name: 'Rejected', value: stats?.rejectedBookings || 0 },
   ]
 
   return (
@@ -224,24 +224,42 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={bookingStatusData}
+                  data={bookingStatusData.filter(item => item.value > 0)}
                   cx="50%"
                   cy="50%"
-                  labelLine={true}
-                  label={({ name, percent, value }) => value > 0 ? `${name}: ${(percent * 100).toFixed(0)}%` : ''}
-                  outerRadius={70}
+                  labelLine={false}
+                  label={({ percent, value }) => {
+                    if (value === 0) return '';
+                    const percentage = (percent * 100).toFixed(0);
+                    // Show just percentage on pie, full info in legend
+                    return `${percentage}%`;
+                  }}
+                  outerRadius={90}
+                  innerRadius={20}
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {bookingStatusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
+                  {bookingStatusData.filter(item => item.value > 0).map((entry, index) => {
+                    const originalIndex = bookingStatusData.findIndex(item => item.name === entry.name);
+                    return (
+                      <Cell key={`cell-${index}`} fill={COLORS[originalIndex % COLORS.length]} />
+                    );
+                  })}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  formatter={(value, name, props) => {
+                    const total = bookingStatusData.reduce((sum, item) => sum + item.value, 0);
+                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                    return [`${value} (${percentage}%)`, props.payload.name];
+                  }}
+                />
                 <Legend 
                   verticalAlign="bottom" 
                   height={36}
-                  formatter={(value, entry) => `${entry.payload.name}: ${entry.payload.value}`}
+                  formatter={(value, entry) => {
+                    const item = bookingStatusData.find(d => d.name === entry.payload.name);
+                    return `${item?.name || entry.payload.name}: ${item?.value || entry.payload.value}`;
+                  }}
                 />
               </PieChart>
             </ResponsiveContainer>
