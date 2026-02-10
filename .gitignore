@@ -1,1 +1,11 @@
 .DS_Store
+
+# Environment and secrets (never commit API keys, SendGrid, Cloudinary, etc.)
+.env
+.env.*
+.env.local
+.env.*.local
+*.env
+**/backend/.env
+**/frontend/.env
+**/admin-panel/.env
