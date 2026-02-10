@@ -258,11 +258,7 @@ export default function ContactSupportScreen() {
             <View style={styles.contactInfo}>
               <Text style={styles.contactItem}>
                 <Text style={styles.contactLabel}>Email:</Text>{" "}
-                support@musiconthego.com
-              </Text>
-              <Text style={styles.contactItem}>
-                <Text style={styles.contactLabel}>Phone:</Text> +1 (800)
-                555-MUSIC
+                musiconthego.app@gmail.com
               </Text>
               <Text style={styles.contactHours}>
                 Available Mon-Fri, 9am-6pm EST
@@ -275,7 +271,7 @@ export default function ContactSupportScreen() {
             <Text style={styles.responseTimeText}>
               <Text style={styles.responseTimeBold}>Response Time:</Text> We
               typically respond within 24-48 hours. For urgent safety concerns,
-              please call us directly.
+              please email us directly.
             </Text>
           </Card>
         </View>

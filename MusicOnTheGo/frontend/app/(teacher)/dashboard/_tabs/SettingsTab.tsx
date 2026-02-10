@@ -123,7 +123,10 @@ export default function SettingsTab() {
 
             <Separator style={styles.separator} />
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => router.push("/(student)/payment-method")}
+            >
               <View style={styles.settingLeft}>
                 <Ionicons
                   name="card-outline"
@@ -131,9 +134,9 @@ export default function SettingsTab() {
                   color="#FF6A5C"
                 />
                 <View style={styles.settingTextContainer}>
-                  <Text style={styles.settingTitle}>Payment Settings</Text>
+                  <Text style={styles.settingTitle}>Payment Method</Text>
                   <Text style={styles.settingSubtitle}>
-                    Manage payment methods
+                    Billing and payment info
                   </Text>
                 </View>
               </View>
