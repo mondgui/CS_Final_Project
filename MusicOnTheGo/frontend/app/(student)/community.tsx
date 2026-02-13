@@ -289,7 +289,9 @@ export default function CommunityScreen() {
     }
 
     const trimmedText = commentText.trim();
-    commentMutation.mutate({ postId: selectedPost.id || selectedPost._id, text: trimmedText });
+    const postId = selectedPost.id ?? selectedPost._id;
+    if (!postId) return;
+    commentMutation.mutate({ postId, text: trimmedText });
   };
 
   const pickMedia = async (type: "video" | "audio" | "image") => {
@@ -307,7 +309,7 @@ export default function CommunityScreen() {
 
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: 'videos',
-          allowsEditing: true,
+          allowsEditing: false, // Avoid iOS picker issues with video trimming
           quality: 1,
           videoMaxDuration: 3600, // Allow up to 1 hour of video
         });
@@ -361,10 +363,11 @@ export default function CommunityScreen() {
       }
     } catch (error: any) {
       console.error("Error picking media:", error);
-      Alert.alert(
-        "Error",
-        error.message || "Failed to pick media file. Please try again."
-      );
+      const message =
+        type === "video"
+          ? "Unable to open video picker. Please allow photo library access in Settings and try again."
+          : error?.message || "Failed to pick media file. Please try again.";
+      Alert.alert("Could not open picker", message);
     }
   };
 
@@ -480,7 +483,7 @@ export default function CommunityScreen() {
   };
 
   // Key extractor for FlatList
-  const keyExtractor = useCallback((item: CommunityPost) => item.id || item._id, []);
+  const keyExtractor = useCallback((item: CommunityPost, index: number) => item.id ?? item._id ?? `post-${index}`, []);
 
   // Get item layout for better FlatList performance (approximate post height: 500px)
   const getItemLayout = useCallback(
@@ -641,8 +644,8 @@ export default function CommunityScreen() {
   };
 
   // Memoized render function for FlatList performance
-  const renderPost = useCallback(({ item: post }: { item: CommunityPost }) => (
-    <Card key={post.id || post._id} style={styles.postCard}>
+  const renderPost = useCallback(({ item: post, index }: { item: CommunityPost; index: number }) => (
+    <Card key={post.id ?? post._id ?? `post-${index}`} style={styles.postCard}>
       {/* Post Header */}
       <View style={styles.postHeader}>
         <View style={styles.authorInfo}>
@@ -739,7 +742,7 @@ export default function CommunityScreen() {
       <View style={styles.postActions}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => handleLike(post.id || post._id)}
+          onPress={() => handleLike(post.id ?? post._id ?? "")}
         >
           <Ionicons
             name={post.isLiked ? "heart" : "heart-outline"}
@@ -1357,6 +1360,27 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
     marginTop: 8,
+  },
+  pdfContainer: {
+    width: "100%",
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  pdfText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginTop: 12,
+  },
+  pdfSubtext: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 4,
   },
   postImage: {
     width: "100%",

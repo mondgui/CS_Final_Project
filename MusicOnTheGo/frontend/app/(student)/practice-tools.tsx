@@ -32,14 +32,14 @@ export default function InteractiveToolsScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [beat, setBeat] = useState(0);
   const [beatsPerMeasure, setBeatsPerMeasure] = useState(4);
-  const metronomeIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const metronomeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Tuner state
   const [currentNote, setCurrentNote] = useState("A");
   const [frequency, setFrequency] = useState(440);
   const [isTuning, setIsTuning] = useState(false);
   const [tuningAccuracy, setTuningAccuracy] = useState(0);
-  const tunerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const tunerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Quiz state
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | null>(null);
@@ -306,10 +306,7 @@ export default function InteractiveToolsScreen() {
                 {/* Play/Pause Button */}
                 <Button
                   onPress={() => setIsPlaying(!isPlaying)}
-                  style={[
-                    styles.playButton,
-                    isPlaying && styles.playButtonStop,
-                  ]}
+                  style={StyleSheet.flatten([styles.playButton, isPlaying ? styles.playButtonStop : null])}
                   size="lg"
                 >
                   <Ionicons
@@ -403,10 +400,7 @@ export default function InteractiveToolsScreen() {
                 {/* Start/Stop Tuner Button */}
                 <Button
                   onPress={handleTunerStart}
-                  style={[
-                    styles.tunerButton,
-                    isTuning && styles.tunerButtonStop,
-                  ]}
+                  style={StyleSheet.flatten([styles.tunerButton, isTuning ? styles.tunerButtonStop : null])}
                   size="lg"
                 >
                   <Ionicons

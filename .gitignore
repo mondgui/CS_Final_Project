@@ -10,6 +10,6 @@
 **/frontend/.env
 **/admin-panel/.env
 
-# Google Service Account key (never commit to git)
-musiconthego-bcbcbce52774.json
-*-bcbcbce52774.json
+# Google Service Account key (never commit to git; rotate in GCP if ever exposed)
+**/musiconthego-bcbcbce52774.json
+**/*-bcbcbce52774.json
