@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -52,6 +52,11 @@ const availabilityData: AvailabilityDay[] = [
 
 export default function TeacherDashboard() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const quickAccessFontSize = useMemo(() => {
+    const cardWidth = (width - 40 - 36) / 4;
+    return Math.max(7, Math.min(9, Math.floor(cardWidth / 10)));
+  }, [width]);
   const params = useLocalSearchParams();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
@@ -579,6 +584,7 @@ export default function TeacherDashboard() {
               onAccept={handleAcceptBooking}
               onReject={handleRejectBooking}
               onCancel={handleCancelBooking}
+              quickAccessFontSize={quickAccessFontSize}
             />
           )}
           {activeTab === "bookings" && (
@@ -617,6 +623,7 @@ type HomeTabContentProps = {
   onAccept?: (id: string) => void;
   onReject?: (id: string) => void;
   onCancel?: (id: string) => void;
+  quickAccessFontSize?: number;
 };
 
 function HomeTabContent({
@@ -632,8 +639,10 @@ function HomeTabContent({
   onAccept,
   onReject,
   onCancel,
+  quickAccessFontSize = 9,
 }: HomeTabContentProps) {
   const router = useRouter();
+  const quickAccessTextStyle = [styles.quickAccessText, { fontSize: quickAccessFontSize }];
 
   return (
     <View>
@@ -646,7 +655,7 @@ function HomeTabContent({
           }}
         >
           <Ionicons name="people-outline" size={20} color="#FF6A5C" />
-          <Text style={styles.quickAccessText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>My Students</Text>
+          <Text style={quickAccessTextStyle} numberOfLines={1}>My Students</Text>
         </Card>
         <Card
           style={styles.quickAccessCard}
@@ -655,7 +664,7 @@ function HomeTabContent({
           }}
         >
           <Ionicons name="book-outline" size={20} color="#FF9076" />
-          <Text style={styles.quickAccessText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Resources</Text>
+          <Text style={quickAccessTextStyle} numberOfLines={1}>Resources</Text>
         </Card>
         <Card
           style={styles.quickAccessCard}
@@ -664,7 +673,7 @@ function HomeTabContent({
           }}
         >
           <Ionicons name="people-circle-outline" size={20} color="#10B981" />
-          <Text style={styles.quickAccessText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Community</Text>
+          <Text style={quickAccessTextStyle} numberOfLines={1}>Community</Text>
         </Card>
         <Card
           style={styles.quickAccessCard}
@@ -673,7 +682,7 @@ function HomeTabContent({
           }}
         >
           <Ionicons name="construct-outline" size={20} color="#4A90E2" />
-          <Text style={styles.quickAccessText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Tools</Text>
+          <Text style={quickAccessTextStyle} numberOfLines={1}>Tools</Text>
         </Card>
       </View>
 
@@ -888,7 +897,6 @@ const styles = StyleSheet.create({
     minWidth: 0, // Allow flex shrinking
   },
   quickAccessText: {
-    fontSize: 12,
     color: "#333",
     marginTop: 4,
     fontWeight: "500",

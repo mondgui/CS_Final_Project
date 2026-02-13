@@ -6,11 +6,16 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   FlatList,
+  Dimensions,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 import { Card } from "../../../../components/ui/card";
-import { Input } from "../../../../components/ui/input";
 import { Button } from "../../../../components/ui/button";
 import { Avatar } from "../../../../components/ui/avatar";
 import { Badge } from "../../../../components/ui/badge";
@@ -50,17 +55,19 @@ export default function HomeTab({
   myTeachers = [],
 }: HomeTabProps) {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedInstrument, setSelectedInstrument] = useState("all");
+  const [instrumentSearchText, setInstrumentSearchText] = useState("");
   const [priceRange, setPriceRange] = useState("all");
   const [showAvailableTeachers, setShowAvailableTeachers] = useState(false);
+  const [instrumentModalVisible, setInstrumentModalVisible] = useState(false);
+  const [instrumentModalInput, setInstrumentModalInput] = useState("");
 
   // Get IDs of my teachers to filter them out from available teachers
   const myTeacherIds = useMemo(() => {
     return new Set(myTeachers.map((t) => t.id || t._id)); // Support both for transition
   }, [myTeachers]);
 
-  // Filter teachers based on search and filters
+  // Filter teachers based on filters
   // Also exclude teachers that the student already has bookings with
   const filteredTeachers = teachers.filter((teacher) => {
     // Exclude teachers the student already has bookings with
@@ -69,19 +76,15 @@ export default function HomeTab({
       return false;
     }
 
-    const matchesSearch =
-      teacher.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      teacher.instruments.some((inst) =>
-        inst.toLowerCase().includes(searchQuery.toLowerCase())
-      ) ||
-      (teacher.location &&
-        teacher.location.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const matchesInstrument =
-      selectedInstrument === "all" ||
-      teacher.instruments.some(
-        (inst) => inst.toLowerCase() === selectedInstrument.toLowerCase()
-      );
+    const instrumentFilter = instrumentSearchText.trim();
+    const matchesInstrument = instrumentFilter
+      ? teacher.instruments.some((inst) =>
+          inst.toLowerCase().includes(instrumentFilter.toLowerCase())
+        )
+      : selectedInstrument === "all" ||
+        teacher.instruments.some(
+          (inst) => inst.toLowerCase() === selectedInstrument.toLowerCase()
+        );
 
     const matchesPrice =
       priceRange === "all" ||
@@ -92,7 +95,7 @@ export default function HomeTab({
         teacher.rate < 55) ||
       (priceRange === "high" && teacher.rate && teacher.rate >= 55);
 
-    return matchesSearch && matchesInstrument && matchesPrice;
+    return matchesInstrument && matchesPrice;
   });
 
   // Render teacher card
@@ -192,7 +195,7 @@ export default function HomeTab({
           }}
         >
           <Ionicons name="trending-up-outline" size={20} color="#FF6A5C" />
-          <Text style={styles.quickAccessText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Progress</Text>
+          <Text style={styles.quickAccessText} numberOfLines={1}>Progress</Text>
         </Card>
 
         <Card
@@ -202,7 +205,7 @@ export default function HomeTab({
           }}
         >
           <Ionicons name="book-outline" size={20} color="#FF9076" />
-          <Text style={styles.quickAccessText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Resources</Text>
+          <Text style={styles.quickAccessText} numberOfLines={1}>Resources</Text>
         </Card>
 
         <Card
@@ -212,7 +215,7 @@ export default function HomeTab({
           }}
         >
           <Ionicons name="people-outline" size={20} color="#10B981" />
-          <Text style={styles.quickAccessText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Community</Text>
+          <Text style={styles.quickAccessText} numberOfLines={1}>Community</Text>
         </Card>
 
         <Card
@@ -222,24 +225,8 @@ export default function HomeTab({
           }}
         >
           <Ionicons name="construct-outline" size={20} color="#4A90E2" />
-          <Text style={styles.quickAccessText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Tools</Text>
+          <Text style={styles.quickAccessText} numberOfLines={1}>Tools</Text>
         </Card>
-      </View>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search-outline"
-          size={20}
-          color="#999"
-          style={styles.searchIcon}
-        />
-        <Input
-          placeholder="Search by instrument or name..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={styles.searchInput}
-        />
       </View>
 
       {/* Filters */}
@@ -251,21 +238,121 @@ export default function HomeTab({
         <View style={styles.filtersRow}>
           <View style={styles.filterItem}>
             <Text style={styles.filterLabel}>Instrument</Text>
-            <Select
-              value={selectedInstrument}
-              onValueChange={setSelectedInstrument}
-              placeholder="All"
+            <TouchableOpacity
+              style={styles.instrumentTrigger}
+              onPress={() => {
+                setInstrumentModalInput(instrumentSearchText.trim());
+                setInstrumentModalVisible(true);
+              }}
+              activeOpacity={0.7}
             >
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="Piano">Piano</SelectItem>
-              <SelectItem value="Guitar">Guitar</SelectItem>
-              <SelectItem value="Violin">Violin</SelectItem>
-              <SelectItem value="Voice">Voice</SelectItem>
-              <SelectItem value="Drums">Drums</SelectItem>
-              <SelectItem value="Bass">Bass</SelectItem>
-              <SelectItem value="Saxophone">Saxophone</SelectItem>
-              <SelectItem value="Flute">Flute</SelectItem>
-            </Select>
+              <Text style={styles.instrumentTriggerText} numberOfLines={1}>
+                {instrumentSearchText.trim()
+                  ? instrumentSearchText.trim()
+                  : selectedInstrument === "all"
+                    ? "All"
+                    : selectedInstrument}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#666" />
+            </TouchableOpacity>
+            <Modal
+              visible={instrumentModalVisible}
+              transparent
+              animationType="slide"
+              onRequestClose={() => {
+                const t = instrumentModalInput.trim();
+                if (t) {
+                  setInstrumentSearchText(t);
+                  setSelectedInstrument("all");
+                }
+                setInstrumentModalVisible(false);
+              }}
+            >
+              <TouchableOpacity
+                style={styles.modalOverlay}
+                activeOpacity={1}
+                onPress={() => {
+                  const t = instrumentModalInput.trim();
+                  if (t) {
+                    setInstrumentSearchText(t);
+                    setSelectedInstrument("all");
+                  }
+                  setInstrumentModalVisible(false);
+                }}
+              >
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === "ios" ? "padding" : undefined}
+                  style={styles.modalKeyboardView}
+                >
+                  <View style={styles.instrumentModalContent} onStartShouldSetResponder={() => true}>
+                    <View style={styles.instrumentModalHeader}>
+                      <Text style={styles.instrumentModalTitle}>Instrument</Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const t = instrumentModalInput.trim();
+                          if (t) {
+                            setInstrumentSearchText(t);
+                            setSelectedInstrument("all");
+                          }
+                          setInstrumentModalVisible(false);
+                        }}
+                      >
+                        <Ionicons name="close" size={24} color="#666" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.instrumentModalHint}>Type an instrument or pick one below</Text>
+                    <TextInput
+                      placeholder="e.g. Ukulele, Cello, Clarinet"
+                      placeholderTextColor="#999"
+                      value={instrumentModalInput}
+                      onChangeText={setInstrumentModalInput}
+                      style={styles.instrumentModalInput}
+                      returnKeyType="done"
+                      onSubmitEditing={() => {
+                        const t = instrumentModalInput.trim();
+                        if (t) {
+                          setInstrumentSearchText(t);
+                          setSelectedInstrument("all");
+                        }
+                        setInstrumentModalVisible(false);
+                      }}
+                    />
+                    <ScrollView style={styles.instrumentModalList} keyboardShouldPersistTaps="handled">
+                      {[
+                        { value: "all", label: "All" },
+                        { value: "Piano", label: "Piano" },
+                        { value: "Guitar", label: "Guitar" },
+                        { value: "Violin", label: "Violin" },
+                        { value: "Voice", label: "Voice" },
+                        { value: "Drums", label: "Drums" },
+                        { value: "Bass", label: "Bass" },
+                        { value: "Saxophone", label: "Saxophone" },
+                        { value: "Flute", label: "Flute" },
+                      ].map(({ value, label }) => {
+                        const isSelected =
+                          !instrumentModalInput.trim() && selectedInstrument === value;
+                        return (
+                          <TouchableOpacity
+                            key={value}
+                            style={[styles.instrumentModalOption, isSelected && styles.instrumentModalOptionSelected]}
+                            onPress={() => {
+                              setSelectedInstrument(value);
+                              setInstrumentSearchText("");
+                              setInstrumentModalVisible(false);
+                            }}
+                          >
+                            <Text style={[styles.instrumentModalOptionText, isSelected && styles.instrumentModalOptionTextSelected]}>
+                              {label}
+                            </Text>
+                            {isSelected && <Ionicons name="checkmark" size={20} color="#FF6A5C" />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                </KeyboardAvoidingView>
+              </TouchableOpacity>
+            </Modal>
           </View>
 
           <View style={styles.filterItem}>
@@ -335,11 +422,11 @@ export default function HomeTab({
               <Text style={styles.emptyText}>
                 {teachers.length === 0
                   ? "No teachers available yet. Check back soon."
-                  : `No teachers match your search criteria. (${teachers.length} teachers found but filtered out)`}
+                  : `No teachers match your filters. (${teachers.length} teachers found but filtered out)`}
               </Text>
               {teachers.length > 0 && (
                 <Text style={[styles.emptyText, { marginTop: 8, fontSize: 12, color: "#999" }]}>
-                  Try clearing your search or filters.
+                  Try adjusting your filters.
                 </Text>
               )}
             </View>
@@ -389,26 +476,19 @@ const styles = StyleSheet.create({
     minWidth: 0, // Allow flex shrinking
   },
   quickAccessText: {
-    fontSize: 12,
+    fontSize: (() => {
+      const w = Dimensions.get("window").width;
+      const cardWidth = (w - 40 - 30) / 4;
+      const fontSizeByWidth = Math.floor(cardWidth / 7);
+      if (w < 340) return Math.max(7, Math.min(9, fontSizeByWidth));
+      if (w < 380) return Math.max(8, Math.min(10, fontSizeByWidth));
+      return Math.max(9, Math.min(12, fontSizeByWidth));
+    })(),
     fontWeight: "600",
     color: "#333",
     marginTop: 6,
     textAlign: "center",
     width: "100%",
-  },
-  searchContainer: {
-    position: "relative",
-    marginBottom: 16,
-  },
-  searchIcon: {
-    position: "absolute",
-    left: 12,
-    top: "50%",
-    marginTop: -10,
-    zIndex: 1,
-  },
-  searchInput: {
-    paddingLeft: 40,
   },
   filtersCard: {
     marginBottom: 20,
@@ -435,6 +515,92 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
     marginBottom: 6,
+  },
+  instrumentTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "white",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+  },
+  instrumentTriggerText: {
+    fontSize: 16,
+    color: "#333",
+    flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalKeyboardView: {
+    justifyContent: "flex-end",
+  },
+  instrumentModalContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "70%",
+    paddingBottom: 24,
+  },
+  instrumentModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F4F4F4",
+  },
+  instrumentModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
+  },
+  instrumentModalHint: {
+    fontSize: 12,
+    color: "#888",
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  instrumentModalInput: {
+    backgroundColor: "#FFF5F3",
+    borderWidth: 1,
+    borderColor: "#FFE0D6",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#333",
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
+  instrumentModalList: {
+    maxHeight: 280,
+  },
+  instrumentModalOption: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F4F4F4",
+  },
+  instrumentModalOptionSelected: {
+    backgroundColor: "#FFF5F3",
+  },
+  instrumentModalOptionText: {
+    fontSize: 16,
+    color: "#333",
+  },
+  instrumentModalOptionTextSelected: {
+    color: "#FF6A5C",
+    fontWeight: "600",
   },
   teachersHeader: {
     flexDirection: "row",

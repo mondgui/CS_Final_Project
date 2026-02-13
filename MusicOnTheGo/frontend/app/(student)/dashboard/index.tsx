@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
-  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,8 +16,8 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useCallback } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../../lib/api";
-import { storage } from "../../../lib/storage";
 import { getSupabaseClient } from "../../../lib/supabase";
+import { Card } from "../../../components/ui/card";
 
 import HomeTab from "./_tabs/HomeTab";
 import LessonsTab from "./_tabs/LessonsTab";
@@ -133,21 +132,6 @@ export default function StudentDashboard() {
     };
   }, [user?.id, queryClient]);
 
-  // Show welcome message on first login
-  useEffect(() => {
-    const showWelcomeMessage = async () => {
-      const hasSeenWelcome = await storage.getItem("student_welcome_seen");
-      if (!hasSeenWelcome) {
-        Alert.alert(
-          "Welcome! 👋",
-          "Teachers cannot contact you first. To connect with a teacher, visit their profile and send them an inquiry using the inquiry form.",
-          [{ text: "Got it!", onPress: () => storage.setItem("student_welcome_seen", "true") }]
-        );
-      }
-    };
-    showWelcomeMessage();
-  }, []);
-
   // Teachers query with infinite pagination
   const {
     data: teachersData,
@@ -252,6 +236,22 @@ export default function StudentDashboard() {
 
   const hasMoreTeachers = hasNextPage || false;
 
+  // Check if student has contacted a teacher (has a booking or at least one conversation)
+  const { data: conversationsData } = useQuery({
+    queryKey: ["student-conversations-check"],
+    queryFn: async () => {
+      const response = await api("/api/messages/conversations", {
+        auth: true,
+        params: { page: "1", limit: "5" },
+      });
+      const list = response?.conversations || response || [];
+      return Array.isArray(list) ? list : [];
+    },
+    enabled: !!user?.id,
+  });
+  const hasConversation = (conversationsData?.length ?? 0) > 0;
+  const hasContactedTeacher = myTeachers.length > 0 || hasConversation;
+
   const loadMoreTeachers = () => {
     if (hasNextPage && !loadingMoreTeachers) {
       fetchNextPage();
@@ -335,6 +335,23 @@ export default function StudentDashboard() {
             </View>
           </View>
         </LinearGradient>
+
+        {/* Persistent notice until student contacts a teacher (home tab only) */}
+        {activeTab === "home" && !hasContactedTeacher && (
+          <View style={styles.contactBannerWrapper}>
+            <Card style={styles.contactBanner}>
+              <View style={styles.contactBannerContent}>
+                <Ionicons name="megaphone-outline" size={26} color="#FF6A5C" style={styles.contactBannerIcon} />
+                <View style={styles.contactBannerTextBlock}>
+                  <Text style={styles.contactBannerTitle}>How to connect with teachers</Text>
+                  <Text style={styles.contactBannerText}>
+                    Teachers cannot see you or contact you first. Visit a teacher’s profile below and send them an inquiry. You make the first move.
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          </View>
+        )}
 
         {/* Screen content depending on active tab */}
         <View style={styles.contentWrapper}>
@@ -487,6 +504,40 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 11,
     fontWeight: "700",
+  },
+
+  contactBannerWrapper: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  contactBanner: {
+    padding: 16,
+    backgroundColor: "#FFE8E2",
+    borderWidth: 2,
+    borderColor: "#FF6A5C",
+    borderRadius: 12,
+  },
+  contactBannerContent: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  contactBannerIcon: {
+    marginTop: 2,
+  },
+  contactBannerTextBlock: {
+    flex: 1,
+  },
+  contactBannerTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#C2410C",
+    marginBottom: 6,
+  },
+  contactBannerText: {
+    fontSize: 15,
+    color: "#333",
+    lineHeight: 22,
   },
 
   contentWrapper: {

@@ -322,6 +322,10 @@ export default function InteractiveToolsScreen() {
                   </Text>
                 </Button>
 
+                <Text style={styles.metronomeNote}>
+                  Visual beat only (no click sound). Use the circles and BPM to keep time.
+                </Text>
+
                 {/* Tempo Presets */}
                 <View style={styles.presetsSection}>
                   <Text style={styles.presetsLabel}>Quick Presets</Text>
@@ -443,10 +447,11 @@ export default function InteractiveToolsScreen() {
 
                 {/* Info */}
                 <View style={styles.infoBox}>
+                  <Text style={styles.infoDisclaimer}>
+                    ⚠️ Reference only: This tuner does not listen to your instrument. It shows a demo display. For real tuning, use a dedicated tuner app or device.
+                  </Text>
                   <Text style={styles.infoText}>
-                    💡 Tip: Play your instrument and watch the tuner respond in
-                    real-time. The needle shows how close you are to the target
-                    note.
+                    💡 Use the note buttons to see the target pitch (e.g. A = 440 Hz). A full tuner that uses the microphone may be added in a future update.
                   </Text>
                 </View>
               </View>
@@ -860,6 +865,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
   },
+  metronomeNote: {
+    fontSize: 11,
+    color: "#6B7280",
+    textAlign: "center",
+    marginTop: 8,
+  },
   presetsSection: {
     gap: 8,
   },
@@ -995,6 +1006,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFE0D6",
     padding: 12,
     borderRadius: 10,
+  },
+  infoDisclaimer: {
+    fontSize: 12,
+    color: "#92400E",
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: 8,
   },
   infoText: {
     fontSize: 12,
