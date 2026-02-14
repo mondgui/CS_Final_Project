@@ -1,1 +1,13 @@
 .DS_Store
+
+# IDE / editor
+.vscode/
+
+# Native build folders (large; reduces "too many active changes" in IDE)
+# Remove these lines if you need to commit android/ios for your workflow
+MusicOnTheGo/frontend/android/
+MusicOnTheGo/frontend/ios/
+
+# Google Service Account key (never commit)
+musiconthego-bcbcbce52774.json
+*-bcbcbce52774.json
