@@ -43,7 +43,7 @@ export default function ChatScreen() {
   const fromInquiry = params.fromInquiry === "true";
 
   // Suggested message when coming from inquiry
-  const suggestedMessage = "Hello, I received your inquiry. How can I help you?";
+  const suggestedMessage = "Hello, I received your inquiry. How may I help you? After we discuss your learning goals and availability, please go to my profile and select a time that works for you to book your lesson.";
   
   const [message, setMessage] = useState(fromInquiry ? suggestedMessage : "");
   const [messages, setMessages] = useState<Message[]>([]);

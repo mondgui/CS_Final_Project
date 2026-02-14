@@ -12,6 +12,7 @@ import BulkMessaging from './pages/BulkMessaging'
 import CommunityPosts from './pages/CommunityPosts'
 import Resources from './pages/Resources'
 import PracticeSessions from './pages/PracticeSessions'
+import Analytics from './pages/Analytics'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="community-posts" element={<CommunityPosts />} />
         <Route path="resources" element={<Resources />} />
         <Route path="practice-sessions" element={<PracticeSessions />} />
+        <Route path="analytics" element={<Analytics />} />
       </Route>
     </Routes>
   )

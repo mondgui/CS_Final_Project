@@ -313,6 +313,7 @@ export default function TeacherDashboard() {
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
     enabled: !!userId,
+    refetchInterval: 20000, // Poll every 20s so new bookings appear even if socket misses
   });
 
   // Flatten all pages into a single array
@@ -343,15 +344,15 @@ export default function TeacherDashboard() {
 
         const bookingRequestHandler = () => {
           if (mounted) {
-            queryClient.invalidateQueries({ queryKey: ["teacher-bookings", userId] });
-            refetchBookings();
+            queryClient.invalidateQueries({ queryKey: ["teacher-bookings"] });
+            queryClient.refetchQueries({ queryKey: ["teacher-bookings"] });
           }
         };
 
         const bookingUpdatedHandler = () => {
           if (mounted) {
-            queryClient.invalidateQueries({ queryKey: ["teacher-bookings", userId] });
-            refetchBookings();
+            queryClient.invalidateQueries({ queryKey: ["teacher-bookings"] });
+            queryClient.refetchQueries({ queryKey: ["teacher-bookings"] });
           }
         };
 
@@ -405,7 +406,7 @@ export default function TeacherDashboard() {
         socketInstance.removeAllListeners("availability-updated");
       }
     };
-  }, [userId, queryClient, refetchBookings]);
+  }, [userId, queryClient]);
 
   // Supabase Realtime: invalidate unread message count on new message or mark-as-read
   useEffect(() => {

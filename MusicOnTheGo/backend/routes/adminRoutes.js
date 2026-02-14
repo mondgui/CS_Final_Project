@@ -640,6 +640,9 @@ router.get("/users", authMiddleware, async (req, res) => {
           location: true,
           profileImage: true,
           createdAt: true,
+          about: true,
+          goals: true,
+          weeklyGoal: true,
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -658,6 +661,37 @@ router.get("/users", authMiddleware, async (req, res) => {
       },
     });
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/analytics/usage
+ * App usage: most and least used screens/features (for polishing or deprioritizing)
+ */
+router.get("/analytics/usage", authMiddleware, async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days) || 30, 365);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setUTCHours(0, 0, 0, 0);
+
+    const rows = await prisma.$queryRaw`
+      SELECT name,
+             COUNT(*)::int AS views,
+             COUNT(DISTINCT "userId")::int AS "uniqueUsers"
+      FROM "AppEvent"
+      WHERE "createdAt" >= ${startDate}
+      GROUP BY name
+      ORDER BY views DESC
+    `;
+
+    res.json({
+      period: { days, from: startDate.toISOString() },
+      byName: rows,
+    });
+  } catch (err) {
+    console.error("Admin analytics/usage error:", err);
     res.status(500).json({ message: err.message });
   }
 });

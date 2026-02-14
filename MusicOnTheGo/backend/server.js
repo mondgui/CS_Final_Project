@@ -58,11 +58,18 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
   // User automatically joined to user:${userId} room in auth middleware
 
-  // Join teacher bookings room
+  // Join teacher bookings room (so teacher receives new-booking-request / booking-updated in real time)
   socket.on('join-teacher-bookings', async () => {
     const userId = socket.data.userId;
     if (userId) {
       await socket.join(`teacher-bookings:${userId}`);
+    }
+  });
+
+  socket.on('leave-teacher-bookings', async () => {
+    const userId = socket.data.userId;
+    if (userId) {
+      await socket.leave(`teacher-bookings:${userId}`);
     }
   });
 
@@ -114,6 +121,7 @@ import resourceRoutes from './routes/resourceRoutes.js';
 import practiceRoutes from './routes/practiceRoutes.js';
 
 import communityRoutes from './routes/communityRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
@@ -156,6 +164,7 @@ app.use('/api/resources', resourceRoutes);
 app.use('/api/practice', practiceRoutes);
 
 app.use('/api/community', communityRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationRoutes);

@@ -305,7 +305,7 @@ export default function BookingConfirmationScreen() {
           teacherLocation: teacher.location || "",
           date: formattedDate,
           time: selectedTime,
-          price: teacher.price || "0",
+          price: String(teacher.rate ?? teacher.price ?? 0),
         },
       });
     } catch (err: any) {
@@ -401,7 +401,7 @@ export default function BookingConfirmationScreen() {
         <Card style={styles.teacherCard}>
           <View style={styles.teacherInfo}>
             <Avatar
-              src={teacher.image}
+              src={teacher.profileImage ?? teacher.image}
               fallback={teacher.name?.charAt(0) || "T"}
               size={56}
             />
@@ -414,7 +414,7 @@ export default function BookingConfirmationScreen() {
               </Text>
             </View>
             <View style={styles.priceContainer}>
-              <Text style={styles.price}>${teacher.price || "0"}</Text>
+              <Text style={styles.price}>${teacher.rate ?? teacher.price ?? 0}</Text>
               <Text style={styles.priceLabel}>per hour</Text>
             </View>
           </View>
@@ -520,7 +520,7 @@ export default function BookingConfirmationScreen() {
                   <Ionicons name="cash-outline" size={16} color="#FF6A5C" />
                   <Text style={styles.totalLabel}>Total</Text>
                 </View>
-                <Text style={styles.totalValue}>${teacher.price || "0"}</Text>
+                <Text style={styles.totalValue}>${teacher.rate ?? teacher.price ?? 0}</Text>
               </View>
             </View>
           </Card>

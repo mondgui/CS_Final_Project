@@ -7,11 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		06F77C069EBA380B32C1D561 /* libPods-MusicOnTheGo.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 874D066847B11349F789BBD5 /* libPods-MusicOnTheGo.a */; };
+		0FE106BD58D5AEED4B455B1F /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8ADDFC3D435E001E0651593 /* ExpoModulesProvider.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		15BDC710F55572712EED4081 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC8C7E02BAE1A2C8A2638F01 /* ExpoModulesProvider.swift */; };
+		2DAF16533D72EEE75C16D02D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 184D9A58FC5ABD71D372384F /* PrivacyInfo.xcprivacy */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		6499E08368C317B0E8DE07E3 /* libPods-MusicOnTheGo.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2ABDF2B729853AF07712796E /* libPods-MusicOnTheGo.a */; };
-		B0AC353111F304D4605D14A3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 74BEAEBD28E607381198A1B3 /* PrivacyInfo.xcprivacy */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
@@ -20,13 +20,13 @@
 		13B07F961A680F5B00A75B9A /* MusicOnTheGo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MusicOnTheGo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = MusicOnTheGo/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = MusicOnTheGo/Info.plist; sourceTree = "<group>"; };
-		2ABDF2B729853AF07712796E /* libPods-MusicOnTheGo.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-MusicOnTheGo.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		74BEAEBD28E607381198A1B3 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = MusicOnTheGo/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		7AFEAFF674E00FF722E16B69 /* Pods-MusicOnTheGo.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MusicOnTheGo.release.xcconfig"; path = "Target Support Files/Pods-MusicOnTheGo/Pods-MusicOnTheGo.release.xcconfig"; sourceTree = "<group>"; };
+		184D9A58FC5ABD71D372384F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = MusicOnTheGo/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		73B83EAD6B9D295D686EE3D3 /* Pods-MusicOnTheGo.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MusicOnTheGo.release.xcconfig"; path = "Target Support Files/Pods-MusicOnTheGo/Pods-MusicOnTheGo.release.xcconfig"; sourceTree = "<group>"; };
+		874D066847B11349F789BBD5 /* libPods-MusicOnTheGo.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-MusicOnTheGo.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = MusicOnTheGo/SplashScreen.storyboard; sourceTree = "<group>"; };
+		B9546B7B7C077B53BDE219F9 /* Pods-MusicOnTheGo.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MusicOnTheGo.debug.xcconfig"; path = "Target Support Files/Pods-MusicOnTheGo/Pods-MusicOnTheGo.debug.xcconfig"; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		D7AB0AF05FAF4BFBAD051BF7 /* Pods-MusicOnTheGo.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MusicOnTheGo.debug.xcconfig"; path = "Target Support Files/Pods-MusicOnTheGo/Pods-MusicOnTheGo.debug.xcconfig"; sourceTree = "<group>"; };
-		EC8C7E02BAE1A2C8A2638F01 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-MusicOnTheGo/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		D8ADDFC3D435E001E0651593 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-MusicOnTheGo/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = MusicOnTheGo/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* MusicOnTheGo-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "MusicOnTheGo-Bridging-Header.h"; path = "MusicOnTheGo/MusicOnTheGo-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -37,7 +37,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6499E08368C317B0E8DE07E3 /* libPods-MusicOnTheGo.a in Frameworks */,
+				06F77C069EBA380B32C1D561 /* libPods-MusicOnTheGo.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,15 +53,7 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				74BEAEBD28E607381198A1B3 /* PrivacyInfo.xcprivacy */,
-			);
-			name = MusicOnTheGo;
-			sourceTree = "<group>";
-		};
-		2BD9168AD0D35B399CBA9953 /* MusicOnTheGo */ = {
-			isa = PBXGroup;
-			children = (
-				EC8C7E02BAE1A2C8A2638F01 /* ExpoModulesProvider.swift */,
+				184D9A58FC5ABD71D372384F /* PrivacyInfo.xcprivacy */,
 			);
 			name = MusicOnTheGo;
 			sourceTree = "<group>";
@@ -70,19 +62,25 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				2ABDF2B729853AF07712796E /* libPods-MusicOnTheGo.a */,
+				874D066847B11349F789BBD5 /* libPods-MusicOnTheGo.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		70A5DB2DD8A865181FCECEDD /* Pods */ = {
+		3F8897ED782BB901C6B81520 /* MusicOnTheGo */ = {
 			isa = PBXGroup;
 			children = (
-				D7AB0AF05FAF4BFBAD051BF7 /* Pods-MusicOnTheGo.debug.xcconfig */,
-				7AFEAFF674E00FF722E16B69 /* Pods-MusicOnTheGo.release.xcconfig */,
+				D8ADDFC3D435E001E0651593 /* ExpoModulesProvider.swift */,
 			);
-			name = Pods;
-			path = Pods;
+			name = MusicOnTheGo;
+			sourceTree = "<group>";
+		};
+		4396EE0546CAE12C2B00BA6C /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				3F8897ED782BB901C6B81520 /* MusicOnTheGo */,
+			);
+			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -99,8 +97,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				70A5DB2DD8A865181FCECEDD /* Pods */,
-				A79A5F89E3E54AE469B075F1 /* ExpoModulesProviders */,
+				E86A433FC36F20D946D59574 /* Pods */,
+				4396EE0546CAE12C2B00BA6C /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -115,14 +113,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		A79A5F89E3E54AE469B075F1 /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				2BD9168AD0D35B399CBA9953 /* MusicOnTheGo */,
-			);
-			name = ExpoModulesProviders;
-			sourceTree = "<group>";
-		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
 			isa = PBXGroup;
 			children = (
@@ -130,6 +120,16 @@
 			);
 			name = Supporting;
 			path = MusicOnTheGo/Supporting;
+			sourceTree = "<group>";
+		};
+		E86A433FC36F20D946D59574 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				B9546B7B7C077B53BDE219F9 /* Pods-MusicOnTheGo.debug.xcconfig */,
+				73B83EAD6B9D295D686EE3D3 /* Pods-MusicOnTheGo.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -140,13 +140,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "MusicOnTheGo" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				3C1BFEAEE21D8B375DC2F6C1 /* [Expo] Configure project */,
+				F8FC448526C77FF4A8B3693D /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				5D5ECD01E87F00B7C2BFF8CE /* [CP] Embed Pods Frameworks */,
+				5B4B0BC8CDF62C10D74B3652 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -196,7 +196,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				B0AC353111F304D4605D14A3 /* PrivacyInfo.xcprivacy in Resources */,
+				2DAF16533D72EEE75C16D02D /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -242,31 +242,7 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		3C1BFEAEE21D8B375DC2F6C1 /* [Expo] Configure project */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/.xcode.env",
-				"$(SRCROOT)/.xcode.env.local",
-				"$(SRCROOT)/MusicOnTheGo/MusicOnTheGo.entitlements",
-				"$(SRCROOT)/Pods/Target Support Files/Pods-MusicOnTheGo/expo-configure-project.sh",
-			);
-			name = "[Expo] Configure project";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(SRCROOT)/Pods/Target Support Files/Pods-MusicOnTheGo/ExpoModulesProvider.swift",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-MusicOnTheGo/expo-configure-project.sh\"\n";
-		};
-		5D5ECD01E87F00B7C2BFF8CE /* [CP] Embed Pods Frameworks */ = {
+		5B4B0BC8CDF62C10D74B3652 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -330,6 +306,30 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-MusicOnTheGo/Pods-MusicOnTheGo-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		F8FC448526C77FF4A8B3693D /* [Expo] Configure project */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/.xcode.env",
+				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/MusicOnTheGo/MusicOnTheGo.entitlements",
+				"$(SRCROOT)/Pods/Target Support Files/Pods-MusicOnTheGo/expo-configure-project.sh",
+			);
+			name = "[Expo] Configure project";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Pods/Target Support Files/Pods-MusicOnTheGo/ExpoModulesProvider.swift",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-MusicOnTheGo/expo-configure-project.sh\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -338,7 +338,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				15BDC710F55572712EED4081 /* ExpoModulesProvider.swift in Sources */,
+				0FE106BD58D5AEED4B455B1F /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -347,7 +347,7 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = D7AB0AF05FAF4BFBAD051BF7 /* Pods-MusicOnTheGo.debug.xcconfig */;
+			baseConfigurationReference = B9546B7B7C077B53BDE219F9 /* Pods-MusicOnTheGo.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
@@ -383,7 +383,7 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 7AFEAFF674E00FF722E16B69 /* Pods-MusicOnTheGo.release.xcconfig */;
+			baseConfigurationReference = 73B83EAD6B9D295D686EE3D3 /* Pods-MusicOnTheGo.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
