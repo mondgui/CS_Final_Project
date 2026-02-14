@@ -1,4 +1,10 @@
 // Prisma Client setup for Express
+// On Render, Postgres "Session mode" has a very low connection limit — cap pool to 1
+if (process.env.RENDER && process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('connection_limit=')) {
+  const u = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = u.includes('?') ? u.replace('?', '?connection_limit=1&') : u + '?connection_limit=1';
+}
+
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient({
