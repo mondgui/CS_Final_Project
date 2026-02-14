@@ -526,6 +526,75 @@ eas build --platform android --profile production
 
 3. **Test thoroughly** before production
 
+### 5.3 Android Closed Testing (Required for New Developer Accounts)
+
+**IMPORTANT**: If you see "You don't have access to production yet" in Play Console, you need to complete closed testing first.
+
+#### Why Closed Testing?
+- **New developer accounts** must have **12 opted-in testers** for **14 consecutive days** in closed testing before they can publish to production
+- This is Google's policy to ensure app quality before public release
+- After 14 days, you'll gain access to production (but the app won't automatically go public)
+
+#### Step-by-Step Setup:
+
+1. **Go to Closed Testing:**
+   - In Play Console, navigate to: **Testing → Closed testing**
+   - You'll see a default track called "Closed testing" (or create a new one)
+
+2. **Create a Release:**
+   - Click **"Create new release"** (or "Edit release" if one exists)
+   - **Upload your `.aab` file** (the same one you'd use for production)
+   - **Release name**: e.g., "1.0.0" or "v1.0.0"
+   - **Release notes**: Brief description (e.g., "Initial closed testing release")
+   - Click **"Review release"**
+   - Click **"Start rollout to Closed testing"**
+
+3. **Add Testers:**
+   - Go to the **"Testers"** tab in Closed testing
+   - Choose **"Create email list"** (or select an existing list)
+   - **Name your list**: e.g., "Beta Testers"
+   - **Add at least 12 email addresses** (you can add more)
+     - These should be real Google accounts (Gmail or Google Workspace)
+     - You can add your own email multiple times if needed (but real testers are better)
+   - Click **"Save changes"**
+
+4. **Get the Opt-In Link:**
+   - After saving testers, you'll see an **"Opt-in URL"** (looks like: `https://play.google.com/apps/internaltest/...`)
+   - **Copy this link** - you'll share it with testers
+
+5. **Share with Testers:**
+   - Send the opt-in link to all 12+ testers
+   - **They must:**
+     - Click the link
+     - Click **"Become a tester"** button
+     - Stay opted in for **14 consecutive days** (if they opt out, the timer resets)
+   - After opting in, they can download your app from the Play Store using the same link
+
+6. **Monitor Progress:**
+   - Check **"Testing → Closed testing"** regularly
+   - Ensure at least **12 testers remain opted in** for 14 consecutive days
+   - Google will track this automatically
+
+7. **After 14 Days:**
+   - You'll receive an email notification (or check Play Console)
+   - **Production access will be unlocked**
+   - You can now publish to Production (but it won't happen automatically)
+   - Closed testing can continue alongside production
+
+#### Important Notes:
+- ⚠️ **Testers must stay opted in**: If someone opts out, the 14-day counter may reset
+- ⚠️ **Consecutive days**: The 14 days must be consecutive (not cumulative)
+- ⚠️ **Minimum 12 testers**: You need at least 12 opted-in testers at all times
+- ✅ **You can add more testers**: Having more than 12 is fine and recommended
+- ✅ **Same AAB**: Use the same production-ready `.aab` file
+- ✅ **Can test during this time**: Testers can use the app while waiting for production access
+
+#### Troubleshooting:
+- **"Create new release" is grayed out**: Check if there's a draft release - edit it instead
+- **Can't add testers**: Make sure you've created a release first
+- **Testers can't see the app**: They must click the opt-in link and become testers first
+- **14 days passed but still no access**: Check that you had 12+ testers for the full 14 consecutive days
+
 ---
 
 ## 📊 STEP 6: POST-SUBMISSION PROCESS

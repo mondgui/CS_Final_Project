@@ -264,6 +264,7 @@ export default function EditProfileScreen() {
           <TextInput
             style={styles.input}
             placeholder="Enter your full name"
+            placeholderTextColor="#6B7280"
             value={name}
             onChangeText={setName}
           />
@@ -275,6 +276,7 @@ export default function EditProfileScreen() {
             value={email}
             editable={false}
             placeholder="Email cannot be changed"
+            placeholderTextColor="#6B7280"
           />
 
           {/* Instruments */}
@@ -306,6 +308,7 @@ export default function EditProfileScreen() {
           <TextInput
             style={styles.input}
             placeholder="e.g. San Francisco, CA"
+            placeholderTextColor="#6B7280"
             value={location}
             onChangeText={setLocation}
           />
@@ -387,6 +390,7 @@ export default function EditProfileScreen() {
           <TextInput
             style={styles.input}
             placeholder="e.g. Evenings, Weekends"
+            placeholderTextColor="#6B7280"
             value={availability}
             onChangeText={setAvailability}
           />
@@ -398,6 +402,7 @@ export default function EditProfileScreen() {
             multiline
             numberOfLines={5}
             placeholder="Share what you want to achieve, preferred genres, etc."
+            placeholderTextColor="#6B7280"
             value={goals}
             onChangeText={setGoals}
           />
@@ -520,6 +525,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E5E5",
     fontSize: 16,
+    color: "#111827",
   },
   inputDisabled: {
     backgroundColor: "#F5F5F5",
@@ -540,6 +546,7 @@ const styles = StyleSheet.create({
     height: 120,
     textAlignVertical: "top",
     fontSize: 16,
+    color: "#111827",
   },
   chipRow: {
     flexDirection: "row",

@@ -123,27 +123,23 @@ export default function SettingsTab() {
               <Ionicons name="chevron-forward" size={20} color="#999" />
             </TouchableOpacity>
 
-            {userRole === "teacher" && (
-              <>
-                <Separator style={styles.separator} />
-                <TouchableOpacity style={styles.settingItem}>
-                  <View style={styles.settingLeft}>
-                    <Ionicons
-                      name="card-outline"
-                      size={20}
-                      color="#FF6A5C"
-                    />
-                    <View style={styles.settingTextContainer}>
-                      <Text style={styles.settingTitle}>Payment Settings</Text>
-                      <Text style={styles.settingSubtitle}>
-                        Manage payment methods
-                      </Text>
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#999" />
-                </TouchableOpacity>
-              </>
-            )}
+            <Separator style={styles.separator} />
+
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => router.push("/(student)/payment-method")}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons name="card-outline" size={20} color="#FF6A5C" />
+                <View style={styles.settingTextContainer}>
+                  <Text style={styles.settingTitle}>Payment Method</Text>
+                  <Text style={styles.settingSubtitle}>
+                    Billing and payment info
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#999" />
+            </TouchableOpacity>
           </View>
         </Card>
 

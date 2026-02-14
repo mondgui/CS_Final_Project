@@ -1,5 +1,8 @@
 .DS_Store
 
+# Temporary / generated
+.pptx_extract/
+
 # IDE / editor
 .vscode/
 
@@ -8,6 +11,18 @@
 MusicOnTheGo/frontend/android/
 MusicOnTheGo/frontend/ios/
 
-# Google Service Account key (never commit)
+# Environment and secrets (never commit API keys, SendGrid, Cloudinary, etc.)
+.env
+.env.*
+.env.local
+.env.*.local
+*.env
+**/backend/.env
+**/frontend/.env
+**/admin-panel/.env
+
+# Google Service Account key (never commit to git; rotate in GCP if ever exposed)
 musiconthego-bcbcbce52774.json
 *-bcbcbce52774.json
+**/musiconthego-bcbcbce52774.json
+**/*-bcbcbce52774.json

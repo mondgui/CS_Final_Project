@@ -67,6 +67,19 @@ npm run prisma:migrate
 
 ## Common Issues
 
+### Issue: "MaxClientsInSessionMode: max clients reached"
+Your app is opening too many database connections at once. **Fix:** add a connection limit to `DATABASE_URL` so Prisma doesn’t use more than Supabase allows.
+
+In your backend `.env`, add `connection_limit=5` to the URL (use `&` if there are already query params):
+
+```env
+# If you have: ...?sslmode=require
+# Change to:
+DATABASE_URL="postgresql://...@.../postgres?sslmode=require&connection_limit=5"
+```
+
+Then restart your backend server. Use `connection_limit=3` if you still hit the limit.
+
 ### Issue: "Can't reach database server"
 **Solutions:**
 1. Check your password is correct (no brackets, exact copy)

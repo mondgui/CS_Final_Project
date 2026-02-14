@@ -1,13 +1,22 @@
 import React from "react";
-import { TextInput, StyleSheet, TextInputProps, ViewStyle } from "react-native";
+import {
+  StyleProp,
+  StyleSheet,
+  TextInput,
+  TextInputProps,
+  TextStyle,
+} from "react-native";
 
 type TextareaProps = TextInputProps & {
-  style?: ViewStyle;
+  style?: StyleProp<TextStyle>;
 };
 
-export function Textarea({ style, ...props }: TextareaProps) {
+const DEFAULT_PLACEHOLDER_COLOR = "#6B7280"; // gray-500
+
+export function Textarea({ style, placeholderTextColor, ...props }: TextareaProps) {
   return (
     <TextInput
+      placeholderTextColor={placeholderTextColor ?? DEFAULT_PLACEHOLDER_COLOR}
       style={[styles.textarea, style]}
       multiline
       textAlignVertical="top"
@@ -26,6 +35,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E5E5",
     minHeight: 80,
+    color: "#111827",
   },
 });
 

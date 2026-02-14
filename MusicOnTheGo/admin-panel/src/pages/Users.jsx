@@ -23,7 +23,7 @@ import {
   CircularProgress,
   Alert,
 } from '@mui/material'
-import { Delete as DeleteIcon } from '@mui/icons-material'
+import { Delete as DeleteIcon, Visibility as ViewIcon } from '@mui/icons-material'
 import api from '../utils/api'
 import { format } from 'date-fns'
 
@@ -31,6 +31,7 @@ export default function Users() {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(50)
   const [deleteDialog, setDeleteDialog] = useState(null)
+  const [detailDialog, setDetailDialog] = useState(null)
   const queryClient = useQueryClient()
 
   const { data, isLoading, error } = useQuery({
@@ -76,6 +77,7 @@ export default function Users() {
               <TableCell>Name</TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Role</TableCell>
+              <TableCell>Bio / goals</TableCell>
               <TableCell>Location</TableCell>
               <TableCell>Instruments</TableCell>
               <TableCell>Joined</TableCell>
@@ -101,6 +103,27 @@ export default function Users() {
                     size="small"
                   />
                 </TableCell>
+                <TableCell sx={{ maxWidth: 220 }}>
+                  {user.role === 'teacher'
+                    ? (user.about?.trim() ? (
+                        <Typography variant="body2" noWrap title={user.about} sx={{ cursor: 'pointer' }} onClick={() => setDetailDialog(user)}>
+                          {user.about.trim().slice(0, 50)}{(user.about?.length ?? 0) > 50 ? '…' : ''}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" onClick={() => setDetailDialog(user)} sx={{ cursor: 'pointer' }}>
+                          (No bio)
+                        </Typography>
+                      ))
+                    : (user.goals?.trim() ? (
+                        <Typography variant="body2" noWrap title={user.goals} sx={{ cursor: 'pointer' }} onClick={() => setDetailDialog(user)}>
+                          {user.goals.trim().slice(0, 50)}{(user.goals?.length ?? 0) > 50 ? '…' : ''}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" onClick={() => setDetailDialog(user)} sx={{ cursor: 'pointer' }}>
+                          (No goals)
+                        </Typography>
+                      ))}
+                </TableCell>
                 <TableCell>{user.location || '-'}</TableCell>
                 <TableCell>
                   {user.instruments?.slice(0, 2).join(', ') || '-'}
@@ -110,6 +133,14 @@ export default function Users() {
                   {user.createdAt ? format(new Date(user.createdAt), 'MMM dd, yyyy') : '-'}
                 </TableCell>
                 <TableCell align="right">
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => setDetailDialog(user)}
+                    title="View bio & goals"
+                  >
+                    <ViewIcon />
+                  </IconButton>
                   <IconButton
                     size="small"
                     color="error"
@@ -135,6 +166,46 @@ export default function Users() {
           setPage(0)
         }}
       />
+
+      {/* User detail dialog: About me (teachers) & Learning goals (students) */}
+      <Dialog open={!!detailDialog} onClose={() => setDetailDialog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {detailDialog?.name} ({detailDialog?.role})
+        </DialogTitle>
+        <DialogContent>
+          {detailDialog?.role === 'teacher' && (
+            <Box mb={2}>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                About me
+              </Typography>
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                {detailDialog?.about?.trim() || '(No bio added)'}
+              </Typography>
+            </Box>
+          )}
+          {detailDialog?.role === 'student' && (
+            <Box mb={2}>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Learning goals
+              </Typography>
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                {detailDialog?.goals?.trim() || '(No goals added)'}
+              </Typography>
+              {detailDialog?.weeklyGoal != null && (
+                <>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mt: 2 }}>
+                    Weekly practice goal (minutes)
+                  </Typography>
+                  <Typography variant="body2">{detailDialog.weeklyGoal ?? '(Not set)'}</Typography>
+                </>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailDialog(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={!!deleteDialog} onClose={() => setDeleteDialog(null)}>
         <DialogTitle>Delete User</DialogTitle>

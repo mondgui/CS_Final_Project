@@ -473,6 +473,7 @@ export default function PracticeLogScreen() {
                       multiline
                       numberOfLines={4}
                       placeholder="What did you work on?"
+                      placeholderTextColor="#6B7280"
                       value={notes}
                       onChangeText={setNotes}
                     />
@@ -684,6 +685,7 @@ export default function PracticeLogScreen() {
                       multiline
                       numberOfLines={4}
                       placeholder="Any specific feedback you're looking for?"
+                      placeholderTextColor="#6B7280"
                       value={recordingNotes}
                       onChangeText={setRecordingNotes}
                     />
@@ -1059,6 +1061,7 @@ const styles = StyleSheet.create({
     borderColor: "#E5E5E5",
     minHeight: 80,
     textAlignVertical: "top",
+    color: "#111827",
   },
   saveButton: {
     marginTop: 8,

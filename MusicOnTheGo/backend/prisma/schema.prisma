@@ -517,3 +517,16 @@ model DeviceToken {
   @@index([userId])
   @@index([token])
 }
+
+// App usage analytics - screen views and feature clicks (for admin "most/least used" insights)
+model AppEvent {
+  id        String   @id @default(uuid())
+  eventType String   // "screen_view" | "feature_click"
+  name      String   // e.g. "student_dashboard", "community", "book_lesson"
+  userId    String?  // optional - set when user is logged in (for unique user counts)
+  createdAt DateTime @default(now())
+
+  @@index([name])
+  @@index([createdAt])
+  @@index([eventType, name])
+}

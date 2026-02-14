@@ -28,6 +28,7 @@ import {
   Forum as ForumIcon,
   Folder as FolderIcon,
   FitnessCenter as FitnessIcon,
+  BarChart as BarChartIcon,
   Logout as LogoutIcon,
   SupportAgent as SupportIcon,
 } from '@mui/icons-material'
@@ -46,6 +47,7 @@ const menuItems = [
   { text: 'Community Posts', icon: <ForumIcon />, path: '/community-posts' },
   { text: 'Resources', icon: <FolderIcon />, path: '/resources' },
   { text: 'Practice Sessions', icon: <FitnessIcon />, path: '/practice-sessions' },
+  { text: 'App usage', icon: <BarChartIcon />, path: '/analytics' },
 ]
 
 export default function Layout() {

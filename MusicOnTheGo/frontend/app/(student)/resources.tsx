@@ -673,6 +673,7 @@ export default function ResourcesScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="e.g., My Practice Sheet"
+                placeholderTextColor="#6B7280"
                 value={title}
                 onChangeText={setTitle}
               />
@@ -681,6 +682,7 @@ export default function ResourcesScreen() {
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="Optional description"
+                placeholderTextColor="#6B7280"
                 value={description}
                 onChangeText={setDescription}
                 multiline
@@ -776,6 +778,7 @@ export default function ResourcesScreen() {
                   <TextInput
                     style={styles.input}
                     placeholder="https://example.com/resource"
+                    placeholderTextColor="#6B7280"
                     value={externalUrl}
                     onChangeText={setExternalUrl}
                     keyboardType="url"
@@ -1106,6 +1109,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E5E5",
     marginBottom: 8,
+    color: "#111827",
   },
   textArea: {
     minHeight: 80,

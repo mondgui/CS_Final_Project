@@ -1,12 +1,26 @@
 import React from "react";
-import { TextInput, StyleSheet, TextInputProps, ViewStyle } from "react-native";
+import {
+  StyleProp,
+  StyleSheet,
+  TextInput,
+  TextInputProps,
+  TextStyle,
+} from "react-native";
 
 type InputProps = TextInputProps & {
-  style?: ViewStyle;
+  style?: StyleProp<TextStyle>;
 };
 
-export function Input({ style, ...props }: InputProps) {
-  return <TextInput style={[styles.input, style]} {...props} />;
+const DEFAULT_PLACEHOLDER_COLOR = "#6B7280"; // gray-500
+
+export function Input({ style, placeholderTextColor, ...props }: InputProps) {
+  return (
+    <TextInput
+      placeholderTextColor={placeholderTextColor ?? DEFAULT_PLACEHOLDER_COLOR}
+      style={[styles.input, style]}
+      {...props}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
@@ -18,6 +32,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
     borderColor: "#E5E5E5",
+    color: "#111827",
   },
 });
 

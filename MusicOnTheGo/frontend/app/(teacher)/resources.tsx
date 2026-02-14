@@ -815,6 +815,7 @@ export default function TeacherResourcesScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="e.g., C Major Scale Practice Sheet"
+                placeholderTextColor="#6B7280"
                 value={title}
                 onChangeText={setTitle}
               />
@@ -823,6 +824,7 @@ export default function TeacherResourcesScreen() {
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="Optional description"
+                placeholderTextColor="#6B7280"
                 value={description}
                 onChangeText={setDescription}
                 multiline
@@ -925,6 +927,7 @@ export default function TeacherResourcesScreen() {
                   <TextInput
                     style={styles.input}
                     placeholder="https://example.com/resource"
+                    placeholderTextColor="#6B7280"
                     value={externalUrl}
                     onChangeText={setExternalUrl}
                     keyboardType="url"
@@ -1058,6 +1061,7 @@ export default function TeacherResourcesScreen() {
                             <TextInput
                               style={[styles.input, styles.noteInput]}
                               placeholder="e.g., Practice this daily for 15 minutes. Focus on..."
+                              placeholderTextColor="#6B7280"
                               value={assignmentNotes[(student.id || student._id) as string] || ""}
                               onChangeText={(text) =>
                                 setAssignmentNotes((prev) => ({
@@ -1136,6 +1140,7 @@ export default function TeacherResourcesScreen() {
               <TextInput
                 style={[styles.input, styles.textArea, styles.noteInput]}
                 placeholder="e.g., Practice this daily for 15 minutes. Focus on..."
+                placeholderTextColor="#6B7280"
                 value={editNoteText}
                 onChangeText={setEditNoteText}
                 multiline
@@ -1432,6 +1437,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E5E5",
     marginBottom: 8,
+    color: "#111827",
   },
   textArea: {
     minHeight: 80,

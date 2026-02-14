@@ -243,6 +243,7 @@ export default function StudentProfileSetup() {
           <TextInput
             style={styles.input}
             placeholder="e.g. Evenings, Weekends"
+            placeholderTextColor="#6B7280"
             value={availability}
             onChangeText={setAvailability}
           />
@@ -253,6 +254,7 @@ export default function StudentProfileSetup() {
             multiline
             numberOfLines={5}
             placeholder="Share what you want to achieve, preferred genres, etc."
+            placeholderTextColor="#6B7280"
             value={goals}
             onChangeText={setGoals}
           />
@@ -278,6 +280,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     marginTop: 6,
+    color: "#111827",
   },
   inputDisabled: {
     backgroundColor: "#EDEDED",
@@ -293,6 +296,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     height: 120,
     textAlignVertical: "top",
+    color: "#111827",
   },
   chipRow: {
     flexDirection: "row",

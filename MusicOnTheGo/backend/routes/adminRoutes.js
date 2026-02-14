@@ -48,30 +48,18 @@ router.get(
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-      // Basic counts
-      const [
-        totalUsers,
-        students,
-        teachers,
-        totalBookings,
-        pendingBookings,
-        approvedBookings,
-        totalMessages,
-        totalPracticeSessions,
-        totalResources,
-        totalCommunityPosts,
-      ] = await Promise.all([
-        prisma.user.count(),
-        prisma.user.count({ where: { role: "student" } }),
-        prisma.user.count({ where: { role: "teacher" } }),
-        prisma.booking.count(),
-        prisma.booking.count({ where: { status: "PENDING" } }),
-        prisma.booking.count({ where: { status: "APPROVED" } }),
-        prisma.message.count(),
-        prisma.practiceSession.count(),
-        prisma.resource.count(),
-        prisma.communityPost.count(),
-      ]);
+      // Basic counts - run sequentially to avoid connection pool exhaustion
+      const totalUsers = await prisma.user.count();
+      const students = await prisma.user.count({ where: { role: "student" } });
+      const teachers = await prisma.user.count({ where: { role: "teacher" } });
+      const totalBookings = await prisma.booking.count();
+      const pendingBookings = await prisma.booking.count({ where: { status: "PENDING" } });
+      const approvedBookings = await prisma.booking.count({ where: { status: "APPROVED" } });
+      const rejectedBookings = await prisma.booking.count({ where: { status: "REJECTED" } });
+      const totalMessages = await prisma.message.count();
+      const totalPracticeSessions = await prisma.practiceSession.count();
+      const totalResources = await prisma.resource.count();
+      const totalCommunityPosts = await prisma.communityPost.count();
 
       // User growth over time
       const userGrowthData = [];
@@ -316,6 +304,7 @@ router.get(
         totalBookings,
         pendingBookings,
         approvedBookings,
+        rejectedBookings,
         totalMessages,
         totalPracticeSessions,
         totalResources,
@@ -651,6 +640,9 @@ router.get("/users", authMiddleware, async (req, res) => {
           location: true,
           profileImage: true,
           createdAt: true,
+          about: true,
+          goals: true,
+          weeklyGoal: true,
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -669,6 +661,37 @@ router.get("/users", authMiddleware, async (req, res) => {
       },
     });
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/analytics/usage
+ * App usage: most and least used screens/features (for polishing or deprioritizing)
+ */
+router.get("/analytics/usage", authMiddleware, async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days) || 30, 365);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setUTCHours(0, 0, 0, 0);
+
+    const rows = await prisma.$queryRaw`
+      SELECT name,
+             COUNT(*)::int AS views,
+             COUNT(DISTINCT "userId")::int AS "uniqueUsers"
+      FROM "AppEvent"
+      WHERE "createdAt" >= ${startDate}
+      GROUP BY name
+      ORDER BY views DESC
+    `;
+
+    res.json({
+      period: { days, from: startDate.toISOString() },
+      byName: rows,
+    });
+  } catch (err) {
+    console.error("Admin analytics/usage error:", err);
     res.status(500).json({ message: err.message });
   }
 });

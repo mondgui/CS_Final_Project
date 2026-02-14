@@ -211,6 +211,7 @@ export default function ProfileSetup() {
           <TextInput
             style={styles.input}
             placeholder="e.g. 5"
+            placeholderTextColor="#6B7280"
             value={experience}
             onChangeText={setExperience}
             keyboardType="numeric"
@@ -220,6 +221,7 @@ export default function ProfileSetup() {
           <TextInput
             style={styles.input}
             placeholder="e.g. 40"
+            placeholderTextColor="#6B7280"
             value={rate}
             onChangeText={setRate}
             keyboardType="numeric"
@@ -247,6 +249,7 @@ export default function ProfileSetup() {
             <TextInput
               style={styles.customSpecialtyInput}
               placeholder="Add your own specialty..."
+              placeholderTextColor="#6B7280"
               value={customSpecialty}
               onChangeText={setCustomSpecialty}
               onSubmitEditing={addCustomSpecialty}
@@ -285,6 +288,7 @@ export default function ProfileSetup() {
             multiline
             numberOfLines={5}
             placeholder="Tell the students about your teaching style..."
+            placeholderTextColor="#6B7280"
             value={about}
             onChangeText={setAbout}
           />
@@ -311,6 +315,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     marginTop: 6,
+    color: "#111827",
   },
   inputDisabled: {
     backgroundColor: "#EDEDED",
@@ -326,6 +331,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     height: 120,
     textAlignVertical: "top",
+    color: "#111827",
   },
   photoCircle: {
     alignSelf: "center",
@@ -362,6 +368,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     fontSize: 14,
+    color: "#111827",
   },
   addCustomButton: {
     backgroundColor: "#FF6A5C",
