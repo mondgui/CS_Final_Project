@@ -363,6 +363,7 @@ export default function StudentDashboard() {
                 hasMore={hasMoreTeachers}
                 onLoadMore={loadMoreTeachers}
                 myTeachers={myTeachers}
+                studentCity={user?.location ? (user.location as string).split(",")[0]?.trim() || undefined : undefined}
               />
             )}
           {activeTab === "lessons" && <LessonsTab />}

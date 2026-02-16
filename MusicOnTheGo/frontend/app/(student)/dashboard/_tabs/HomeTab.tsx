@@ -37,6 +37,12 @@ type Teacher = {
   reviewCount?: number;
 };
 
+/** Normalize location string to city (first part before comma) for comparison */
+function getCityFromLocation(location: string | undefined): string {
+  if (!location || !location.trim()) return "";
+  return location.split(",")[0]?.trim().toLowerCase() || "";
+}
+
 type HomeTabProps = {
   teachers: Teacher[];
   loading: boolean;
@@ -44,6 +50,7 @@ type HomeTabProps = {
   hasMore?: boolean;
   onLoadMore?: () => void;
   myTeachers?: Teacher[]; // Teachers the student has booked with
+  studentCity?: string; // Student's city from profile (e.g. first part of location) for "Teachers in my city"
 };
 
 export default function HomeTab({
@@ -53,6 +60,7 @@ export default function HomeTab({
   hasMore = false,
   onLoadMore,
   myTeachers = [],
+  studentCity,
 }: HomeTabProps) {
   const router = useRouter();
   const [selectedInstrument, setSelectedInstrument] = useState("all");
@@ -66,6 +74,12 @@ export default function HomeTab({
   const myTeacherIds = useMemo(() => {
     return new Set(myTeachers.map((t) => t.id || t._id)); // Support both for transition
   }, [myTeachers]);
+
+  // Normalized student city for matching (e.g. "new york")
+  const studentCityNorm = useMemo(
+    () => (studentCity && studentCity.trim() ? studentCity.trim().toLowerCase() : null),
+    [studentCity]
+  );
 
   // Filter teachers based on filters
   // Also exclude teachers that the student already has bookings with
@@ -97,6 +111,25 @@ export default function HomeTab({
 
     return matchesInstrument && matchesPrice;
   });
+
+  // When student has a city set, split available teachers: "in my city" first, then "other"
+  const { teachersInMyCity, otherTeachers } = useMemo(() => {
+    if (!studentCityNorm) {
+      return { teachersInMyCity: [] as Teacher[], otherTeachers: filteredTeachers };
+    }
+    const inCity: Teacher[] = [];
+    const other: Teacher[] = [];
+    const studentCityStr = studentCityNorm;
+    filteredTeachers.forEach((t) => {
+      const teacherCity = getCityFromLocation(t.location);
+      if (teacherCity && teacherCity === studentCityStr) {
+        inCity.push(t);
+      } else {
+        other.push(t);
+      }
+    });
+    return { teachersInMyCity: inCity, otherTeachers: other };
+  }, [filteredTeachers, studentCityNorm]);
 
   // Render teacher card
   const renderTeacher = useCallback(
@@ -393,7 +426,9 @@ export default function HomeTab({
         >
           <View style={styles.collapsibleHeader}>
             <Text style={styles.sectionTitleInline}>Available Teachers</Text>
-            <Badge variant="default">{teachers.length} total, {filteredTeachers.length} available</Badge>
+            <Badge variant="default">
+              {`${teachers.length} total, ${filteredTeachers.length} available${studentCityNorm ? ` · ${teachersInMyCity.length} in your city` : ""}`}
+            </Badge>
           </View>
           <Ionicons
             name={showAvailableTeachers ? "chevron-up" : "chevron-down"}
@@ -431,25 +466,58 @@ export default function HomeTab({
               )}
             </View>
           ) : (
-            <FlatList
-              data={filteredTeachers}
-              renderItem={renderTeacher}
-              keyExtractor={keyExtractor}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-              // Pagination
-              onEndReached={onLoadMore}
-              onEndReachedThreshold={0.5}
-              // Loading more indicator
-              ListFooterComponent={
-                loadingMore ? (
-                  <View style={styles.loadingMoreContainer}>
-                    <ActivityIndicator size="small" color="#FF6A5C" />
-                    <Text style={styles.loadingMoreText}>Loading more teachers...</Text>
+            <>
+              {/* Teachers in my city - shown first when student has location set */}
+              {studentCityNorm && teachersInMyCity.length > 0 && (
+                <View style={styles.subsection}>
+                  <View style={styles.teachersHeader}>
+                    <Ionicons name="location" size={18} color="#FF6A5C" />
+                    <Text style={styles.subsectionTitle}>
+                      Teachers in {studentCity ? studentCity.trim() : "your city"}
+                    </Text>
+                    <Badge variant="default">{teachersInMyCity.length}</Badge>
                   </View>
-                ) : null
-              }
-            />
+                  <FlatList
+                    data={teachersInMyCity}
+                    renderItem={renderTeacher}
+                    keyExtractor={keyExtractor}
+                    scrollEnabled={false}
+                    showsVerticalScrollIndicator={false}
+                  />
+                </View>
+              )}
+
+              {/* Other teachers (or all available when no city filter) */}
+              {otherTeachers.length > 0 && (
+                <View style={styles.subsection}>
+                  <View style={styles.teachersHeader}>
+                    <Text style={styles.subsectionTitle}>
+                      {studentCityNorm ? "Other teachers" : "All available"}
+                    </Text>
+                    <Badge variant="secondary">{otherTeachers.length}</Badge>
+                  </View>
+                  <FlatList
+                    data={otherTeachers}
+                    renderItem={renderTeacher}
+                    keyExtractor={keyExtractor}
+                    scrollEnabled={false}
+                    showsVerticalScrollIndicator={false}
+                    onEndReached={onLoadMore}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={
+                      loadingMore ? (
+                        <View style={styles.loadingMoreContainer}>
+                          <ActivityIndicator size="small" color="#FF6A5C" />
+                          <Text style={styles.loadingMoreText}>Loading more teachers...</Text>
+                        </View>
+                      ) : null
+                    }
+                  />
+                </View>
+              )}
+
+              {/* Edge case: city set but no teachers in city and no others (filtered to zero in both) is already handled by filteredTeachers.length === 0 above */}
+            </>
           )}
         </>
       )}
@@ -618,6 +686,16 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     marginBottom: 0,
+  },
+  subsection: {
+    marginBottom: 24,
+  },
+  subsectionTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 0,
+    flex: 1,
   },
   loadingContainer: {
     alignItems: "center",
