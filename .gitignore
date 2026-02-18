@@ -7,9 +7,8 @@
 .vscode/
 
 # Native build folders (large; reduces "too many active changes" in IDE)
-# Remove these lines if you need to commit android/ios for your workflow
+# ios/ is committed so EAS Build can find Podfile; android/ stays ignored unless needed
 MusicOnTheGo/frontend/android/
-MusicOnTheGo/frontend/ios/
 
 # Environment and secrets (never commit API keys, SendGrid, Cloudinary, etc.)
 .env

@@ -4,3 +4,8 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+# Native build artifacts (keep Podfile/project, avoid committing Pods)
+ios/Pods/
+ios/build/
+ios/.xcode.env.local
