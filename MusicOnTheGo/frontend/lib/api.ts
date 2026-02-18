@@ -215,15 +215,18 @@ export async function api(path: string, init: ApiInit = {}) {
 
     return data;
   } catch (error: any) {
-    // Enhanced error logging for network failures
+    // Enhanced error logging for network failures (skip for analytics - fire-and-forget)
+    const isAnalytics = url.includes('/api/analytics/');
     if (error.message === 'Network request failed' || error.message?.includes('Network')) {
-      console.error('[API] Network Error Details:', {
-        url,
-        method: init.method || 'GET',
-        baseUrl: BASE_URL,
-        platform: Platform.OS,
-        error: error.message,
-      });
+      if (!isAnalytics) {
+        console.error('[API] Network Error Details:', {
+          url,
+          method: init.method || 'GET',
+          baseUrl: BASE_URL,
+          platform: Platform.OS,
+          error: error.message,
+        });
+      }
       throw new Error(
         `Network request failed. Please check:\n` +
         `1. Backend server is running on ${BASE_URL}\n` +
