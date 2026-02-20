@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.mondgui.musiconthego",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need your location to find teachers and students near you.",
