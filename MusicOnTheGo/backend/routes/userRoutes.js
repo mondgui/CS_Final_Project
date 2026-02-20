@@ -157,6 +157,25 @@ router.put("/me", authMiddleware, async (req, res) => {
 });
 
 /**
+ * DELETE /api/users/me
+ * Permanently delete the current user's account and associated data.
+ */
+router.delete("/me", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    await prisma.user.delete({
+      where: { id: userId },
+    });
+    res.json({ message: "Account deleted successfully." });
+  } catch (err) {
+    if (err.code === "P2025") {
+      return res.status(404).json({ message: "User not found." });
+    }
+    res.status(500).json({ message: "Failed to delete account. Please try again or contact support." });
+  }
+});
+
+/**
  * PUT /api/users/me/change-password
  * Change password (requires current password)
  */

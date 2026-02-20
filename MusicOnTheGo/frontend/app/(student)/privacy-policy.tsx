@@ -1,19 +1,66 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { api } from "../../lib/api";
+import { clearAuth } from "../../lib/auth";
 
 export default function PrivacyPolicyScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  const openDeleteFlow = () => {
+    Alert.alert(
+      "Delete your account?",
+      "This action cannot be undone. You will lose all your data, including profile, lessons, and progress.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Continue", onPress: () => { setDeleteError(""); setDeleteConfirmText(""); setShowDeleteModal(true); } },
+      ]
+    );
+  };
+
+  const closeDeleteModal = () => {
+    if (!deleting) {
+      setShowDeleteModal(false);
+      setDeleteConfirmText("");
+      setDeleteError("");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE" || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await api("/api/users/me", { method: "DELETE", auth: true });
+      await clearAuth();
+      queryClient.clear();
+      router.replace("/(auth)/login");
+    } catch (err: any) {
+      const message = err?.message || "Could not delete account. Try again or contact support.";
+      setDeleteError(message);
+      setDeleting(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -167,10 +214,6 @@ export default function PrivacyPolicyScreen() {
                 To facilitate lessons (name, contact info, availability)
               </Text>
               <Text style={styles.bulletItem}>
-                <Text style={styles.boldText}>With service providers:</Text>{" "}
-                Trusted partners who help operate our platform
-              </Text>
-              <Text style={styles.bulletItem}>
                 <Text style={styles.boldText}>Legal requirements:</Text> When
                 required by law or to protect user safety
               </Text>
@@ -219,10 +262,7 @@ export default function PrivacyPolicyScreen() {
             <View style={styles.contactInfo}>
               <Text style={styles.contactItem}>
                 <Text style={styles.boldText}>Email:</Text>{" "}
-                privacy@musiconthego.com
-              </Text>
-              <Text style={styles.contactItem}>
-                <Text style={styles.boldText}>Phone:</Text> +1 (800) 555-MUSIC
+                musiconthego.app@gmail.com
               </Text>
               <Text style={styles.contactItem}>
                 <Text style={styles.boldText}>
@@ -251,10 +291,8 @@ export default function PrivacyPolicyScreen() {
             </Text>
             <TouchableOpacity
               style={styles.deleteButton}
-              onPress={() => {
-                // TODO: Implement delete account functionality
-                console.log("Delete account pressed");
-              }}
+              onPress={openDeleteFlow}
+              disabled={deleting}
             >
               <Text style={styles.deleteButtonText}>Delete My Account</Text>
             </TouchableOpacity>
@@ -264,6 +302,59 @@ export default function PrivacyPolicyScreen() {
           </Card>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDeleteModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Type DELETE to confirm</Text>
+            <Text style={styles.modalSubtitle}>
+              To permanently delete your account, type the word DELETE below.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={deleteConfirmText}
+              onChangeText={(t) => setDeleteConfirmText(t)}
+              placeholder="DELETE"
+              placeholderTextColor="#999"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!deleting}
+            />
+            {deleteError ? (
+              <Text style={styles.modalError}>{deleteError}</Text>
+            ) : null}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={closeDeleteModal}
+                disabled={deleting}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.modalButtonDelete,
+                  (deleteConfirmText !== "DELETE" || deleting) && styles.modalButtonDisabled,
+                ]}
+                onPress={handleDeleteAccount}
+                disabled={deleteConfirmText !== "DELETE" || deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalButtonDeleteText}>Permanently delete my account</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -406,5 +497,76 @@ const styles = StyleSheet.create({
     color: "#999",
     textAlign: "center",
     marginTop: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: "#CCC",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  modalError: {
+    fontSize: 14,
+    color: "#B91C1C",
+    marginBottom: 12,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalButtonCancel: {
+    backgroundColor: "#f0f0f0",
+  },
+  modalButtonCancelText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+  },
+  modalButtonDelete: {
+    backgroundColor: "#B91C1C",
+  },
+  modalButtonDisabled: {
+    backgroundColor: "#CCC",
+    opacity: 0.8,
+  },
+  modalButtonDeleteText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
   },
 });
