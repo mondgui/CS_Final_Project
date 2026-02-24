@@ -15,17 +15,26 @@ import { Separator } from "../../../../components/ui/separator";
 import { clearAuth } from "../../../../lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
 
-export default function SettingsTab() {
+type SettingsTabProps = {
+  isGuest?: boolean;
+  onRequireLogin?: (redirect?: string) => void;
+};
+
+export default function SettingsTab({ isGuest = false, onRequireLogin }: SettingsTabProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [userRole, setUserRole] = useState<"teacher" | "student" | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isGuest);
 
   // Notification state
   const [pushNotifications, setPushNotifications] = useState(true);
 
-  // Load user data and preferences
+  // Load user data and preferences (skip when guest)
   useEffect(() => {
+    if (isGuest) {
+      setLoading(false);
+      return;
+    }
     async function loadUser() {
       try {
         const user = await api("/api/users/me", { auth: true });
@@ -38,10 +47,14 @@ export default function SettingsTab() {
       }
     }
     loadUser();
-  }, []);
+  }, [isGuest]);
 
   // Save notification preference
   const handlePushNotificationsChange = async (value: boolean) => {
+    if (isGuest && onRequireLogin) {
+      onRequireLogin("/(student)/dashboard");
+      return;
+    }
     setPushNotifications(value);
     try {
       await api("/api/users/me", {
@@ -51,24 +64,31 @@ export default function SettingsTab() {
       });
     } catch (err) {
       console.error("Failed to update notification preference:", err);
-      // Revert on error
       setPushNotifications(!value);
     }
   };
 
   const handleLogout = async () => {
+    if (isGuest && onRequireLogin) {
+      onRequireLogin("/(student)/dashboard");
+      return;
+    }
     try {
-      // Clear all auth data
       await clearAuth();
-      // Clear React Query cache to prevent data leakage
       queryClient.clear();
-      // Navigate to login
       router.replace("/(auth)/login");
     } catch (error) {
       console.error("Logout error:", error);
-      // Still navigate to login even if clearing fails
       router.replace("/(auth)/login");
     }
+  };
+
+  const handleSettingPress = (path: string) => {
+    if (isGuest && onRequireLogin) {
+      onRequireLogin(path);
+      return;
+    }
+    router.push(path as any);
   };
 
   if (loading) {
@@ -91,7 +111,7 @@ export default function SettingsTab() {
           <View style={styles.sectionContent}>
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={() => router.push("/(student)/edit-profile")}
+              onPress={() => handleSettingPress("/(student)/edit-profile")}
             >
               <View style={styles.settingLeft}>
                 <Ionicons name="person-outline" size={20} color="#FF6A5C" />
@@ -109,7 +129,7 @@ export default function SettingsTab() {
 
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={() => router.push("/(student)/change-password")}
+              onPress={() => handleSettingPress("/(student)/change-password")}
             >
               <View style={styles.settingLeft}>
                 <Ionicons name="lock-closed-outline" size={20} color="#FF6A5C" />
@@ -127,7 +147,7 @@ export default function SettingsTab() {
 
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={() => router.push("/(student)/payment-method")}
+              onPress={() => handleSettingPress("/(student)/payment-method")}
             >
               <View style={styles.settingLeft}>
                 <Ionicons name="card-outline" size={20} color="#FF6A5C" />
@@ -171,7 +191,7 @@ export default function SettingsTab() {
           <View style={styles.sectionContent}>
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={() => router.push("/(student)/privacy-policy")}
+              onPress={() => handleSettingPress("/(student)/privacy-policy")}
             >
               <View style={styles.settingLeft}>
                 <Ionicons name="shield-outline" size={20} color="#FF6A5C" />
@@ -193,7 +213,7 @@ export default function SettingsTab() {
           <View style={styles.sectionContent}>
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={() => router.push("/(student)/help-center")}
+              onPress={() => handleSettingPress("/(student)/help-center")}
             >
               <View style={styles.settingLeft}>
                 <Ionicons name="help-circle-outline" size={20} color="#FF6A5C" />
@@ -211,7 +231,7 @@ export default function SettingsTab() {
 
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={() => router.push("/(student)/contact-support")}
+              onPress={() => handleSettingPress("/(student)/contact-support")}
             >
               <View style={styles.settingLeft}>
                 <Ionicons name="mail-outline" size={20} color="#FF6A5C" />
@@ -233,7 +253,7 @@ export default function SettingsTab() {
           <View style={styles.sectionContent}>
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={() => router.push("/(student)/about")}
+              onPress={() => handleSettingPress("/(student)/about")}
             >
               <View style={styles.settingLeft}>
                 <Ionicons name="information-circle-outline" size={20} color="#FF6A5C" />

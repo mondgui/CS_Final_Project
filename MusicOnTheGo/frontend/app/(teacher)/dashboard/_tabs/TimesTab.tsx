@@ -16,7 +16,11 @@ type Availability = {
   originalDay?: string; // Original day string from backend (YYYY-MM-DD or day name)
   originalDate?: Date; // Parsed date object for grouping
 };
-type Props = { availability: Availability[] };
+type Props = {
+  availability: Availability[];
+  isGuest?: boolean;
+  onRequireLogin?: (path?: string) => void;
+};
 
 // Generate individual time options with 15-minute intervals
 // Format: "8:00 AM", "8:15 AM", "8:30 AM", etc.
@@ -64,7 +68,7 @@ function isTimeBefore(time1: string, time2: string): boolean {
 
 const TIME_OPTIONS = generateTimeOptions();
 
-export default function TimesTab({ availability: initialAvailability }: Props) {
+export default function TimesTab({ availability: initialAvailability, isGuest = false, onRequireLogin }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedFromTime, setSelectedFromTime] = useState("");
@@ -80,14 +84,14 @@ export default function TimesTab({ availability: initialAvailability }: Props) {
   };
 
   useEffect(() => {
-    loadAvailability();
-  }, []);
+    if (!isGuest) loadAvailability();
+  }, [isGuest]);
 
   // Refresh availability when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      loadAvailability();
-    }, [])
+      if (!isGuest) loadAvailability();
+    }, [isGuest])
   );
 
   const loadAvailability = async () => {
@@ -247,6 +251,15 @@ export default function TimesTab({ availability: initialAvailability }: Props) {
 
   return (
     <View style={styles.section}>
+      {isGuest && onRequireLogin ? (
+        <Button
+          style={styles.addButton}
+          onPress={() => onRequireLogin("/(teacher)/dashboard")}
+        >
+          <Ionicons name="add-outline" size={18} color="white" style={{ marginRight: 8 }} />
+          <Text style={styles.addButtonText}>Add Available Time</Text>
+        </Button>
+      ) : (
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogTrigger asChild>
           <Button style={styles.addButton}>
@@ -319,6 +332,7 @@ export default function TimesTab({ availability: initialAvailability }: Props) {
           </View>
         </DialogContent>
       </Dialog>
+      )}
 
       {loading ? (
         <ActivityIndicator color="#FF6A5C" style={{ marginTop: 20 }} />

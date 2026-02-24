@@ -9,6 +9,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '../hooks/use-color-scheme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GuestActionProvider } from '../contexts/GuestActionContext';
 
 // Keep the native splash visible until the app is ready
 SplashScreen.preventAutoHideAsync();
@@ -61,6 +62,7 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <GuestActionProvider>
       <SafeAreaProvider
         onLayout={() => {
           if (!appReady) setAppReady(true);
@@ -87,6 +89,7 @@ export default function RootLayout() {
           <StatusBar style="auto" />
         </ThemeProvider>
       </SafeAreaProvider>
+      </GuestActionProvider>
     </QueryClientProvider>
   );
 }

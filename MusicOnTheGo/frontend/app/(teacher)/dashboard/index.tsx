@@ -14,6 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../lib/api";
+import { useAuth } from "../../../hooks/use-auth";
+import { useGuestDialog } from "../../../contexts/GuestActionContext";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { initSocket } from "../../../lib/socket";
@@ -53,6 +55,7 @@ const availabilityData: AvailabilityDay[] = [
 export default function TeacherDashboard() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const { isLoggedIn, isGuest } = useAuth();
   const quickAccessFontSize = useMemo(() => {
     const cardWidth = (width - 40 - 36) / 4;
     return Math.max(7, Math.min(9, Math.floor(cardWidth / 10)));
@@ -62,8 +65,9 @@ export default function TeacherDashboard() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [innerTab, setInnerTab] = useState<string>("schedule-bookings");
-  
-  // Fetch unread message count
+  const { showGuestDialog } = useGuestDialog();
+
+  // Fetch unread message count (only when logged in)
   const { data: unreadMessagesCount, refetch: refetchUnreadMessages } = useQuery({
     queryKey: ["unread-messages-count"],
     queryFn: async () => {
@@ -74,23 +78,24 @@ export default function TeacherDashboard() {
         return 0;
       }
     },
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 30000,
+    enabled: isLoggedIn,
   });
 
-  // Fetch unread inquiries count for teachers
+  // Fetch unread inquiries count for teachers (only when logged in)
   const { data: unreadInquiriesCount, refetch: refetchUnreadInquiries } = useQuery({
     queryKey: ["unread-inquiries-count"],
     queryFn: async () => {
       try {
         const inquiries = await api("/api/inquiries/teacher/me", { auth: true });
         const inquiriesList = Array.isArray(inquiries) ? inquiries : [];
-        // Count inquiries with status "sent" (unread)
         return inquiriesList.filter((inq: any) => inq.status === "sent").length;
       } catch {
         return 0;
       }
     },
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 30000,
+    enabled: isLoggedIn,
   });
 
   // Refetch unread counts when screen comes into focus (e.g., returning from chat)
@@ -204,12 +209,13 @@ export default function TeacherDashboard() {
     return day; // If not a day name or date, return as is
   }, []);
 
-  // Load user with React Query
+  // Load user with React Query (only when logged in)
   const { data: user } = useQuery({
     queryKey: ["teacher-user"],
     queryFn: async () => {
       return await api("/api/users/me", { auth: true });
     },
+    enabled: isLoggedIn,
   });
 
   const userId = user?.id || user?._id || null;
@@ -312,8 +318,8 @@ export default function TeacherDashboard() {
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
-    enabled: !!userId,
-    refetchInterval: 20000, // Poll every 20s so new bookings appear even if socket misses
+    enabled: !!userId && isLoggedIn,
+    refetchInterval: 20000,
   });
 
   // Flatten all pages into a single array
@@ -517,7 +523,9 @@ export default function TeacherDashboard() {
             {/* Profile Picture */}
             <TouchableOpacity
               style={styles.profilePictureContainer}
-              onPress={() => setActiveTab("settings")}
+              onPress={() =>
+                isGuest ? showGuestDialog() : setActiveTab("settings")
+              }
               activeOpacity={0.7}
             >
               {user?.profileImage ? (
@@ -535,7 +543,7 @@ export default function TeacherDashboard() {
             {/* Teacher Info */}
             <View style={styles.headerTextContainer}>
               <Text style={styles.headerTeacherName}>
-                {user?.name || "Teacher Name"}
+                {user?.name || (isGuest ? "Music Teacher" : "Teacher Name")}
               </Text>
               <Text style={styles.headerTeacherInstrument}>
                 {user?.instruments?.length
@@ -554,7 +562,9 @@ export default function TeacherDashboard() {
             <View style={styles.headerButtons}>
               <TouchableOpacity
                 style={styles.headerIconButton}
-                onPress={() => router.push("/messages")}
+                onPress={() =>
+                  isGuest ? showGuestDialog() : router.push("/messages")
+                }
               >
                 <Ionicons name="chatbubbles-outline" size={24} color="white" />
                 {totalUnreadCount > 0 ? (
@@ -569,7 +579,7 @@ export default function TeacherDashboard() {
           </View>
         </LinearGradient>
 
-        {/* Screen content depending on active tab */}
+        {/* Screen content depending on active tab — full dashboard for guests; every button requires sign-in */}
         <View style={styles.contentWrapper}>
           {activeTab === "home" && (
             <HomeTabContent
@@ -586,6 +596,8 @@ export default function TeacherDashboard() {
               onReject={handleRejectBooking}
               onCancel={handleCancelBooking}
               quickAccessFontSize={quickAccessFontSize}
+              isGuest={isGuest}
+              onRequireLogin={showGuestDialog}
             />
           )}
           {activeTab === "bookings" && (
@@ -598,9 +610,16 @@ export default function TeacherDashboard() {
               onAccept={handleAcceptBooking}
               onReject={handleRejectBooking}
               onCancel={handleCancelBooking}
+              isGuest={isGuest}
+              onRequireLogin={showGuestDialog}
             />
           )}
-          {activeTab === "settings" && <SettingsTab />}
+          {activeTab === "settings" && (
+            <SettingsTab
+              isGuest={isGuest}
+              onRequireLogin={showGuestDialog}
+            />
+          )}
         </View>
       </ScrollView>
 
@@ -625,6 +644,8 @@ type HomeTabContentProps = {
   onReject?: (id: string) => void;
   onCancel?: (id: string) => void;
   quickAccessFontSize?: number;
+  isGuest?: boolean;
+  onRequireLogin?: (path?: string) => void;
 };
 
 function HomeTabContent({
@@ -641,9 +662,16 @@ function HomeTabContent({
   onReject,
   onCancel,
   quickAccessFontSize = 9,
+  isGuest = false,
+  onRequireLogin,
 }: HomeTabContentProps) {
   const router = useRouter();
   const quickAccessTextStyle = [styles.quickAccessText, { fontSize: quickAccessFontSize }];
+
+  const handleQuickAccess = (path: string) => {
+    if (isGuest && onRequireLogin) onRequireLogin(path);
+    else router.push(path as any);
+  };
 
   return (
     <View>
@@ -651,36 +679,28 @@ function HomeTabContent({
       <View style={styles.quickAccessRow}>
         <Card
           style={styles.quickAccessCard}
-          onPress={() => {
-            router.push("/(teacher)/students");
-          }}
+          onPress={() => handleQuickAccess("/(teacher)/students")}
         >
           <Ionicons name="people-outline" size={20} color="#FF6A5C" />
           <Text style={quickAccessTextStyle} numberOfLines={1}>My Students</Text>
         </Card>
         <Card
           style={styles.quickAccessCard}
-          onPress={() => {
-            router.push("/(teacher)/resources");
-          }}
+          onPress={() => handleQuickAccess("/(teacher)/resources")}
         >
           <Ionicons name="book-outline" size={20} color="#FF9076" />
           <Text style={quickAccessTextStyle} numberOfLines={1}>Resources</Text>
         </Card>
         <Card
           style={styles.quickAccessCard}
-          onPress={() => {
-            router.push("/(teacher)/community");
-          }}
+          onPress={() => handleQuickAccess("/(teacher)/community")}
         >
           <Ionicons name="people-circle-outline" size={20} color="#10B981" />
           <Text style={quickAccessTextStyle} numberOfLines={1}>Community</Text>
         </Card>
         <Card
           style={styles.quickAccessCard}
-          onPress={() => {
-            router.push("/(student)/practice-tools");
-          }}
+          onPress={() => handleQuickAccess("/(student)/practice-tools")}
         >
           <Ionicons name="construct-outline" size={20} color="#4A90E2" />
           <Text style={quickAccessTextStyle} numberOfLines={1}>Tools</Text>
@@ -708,11 +728,17 @@ function HomeTabContent({
               onAccept={onAccept}
               onReject={onReject}
               onCancel={onCancel}
+              isGuest={isGuest}
+              onRequireLogin={onRequireLogin}
             />
           </TabsContent>
 
           <TabsContent value="times">
-            <TimesTab availability={availabilityData} />
+            <TimesTab
+              availability={availabilityData}
+              isGuest={isGuest}
+              onRequireLogin={onRequireLogin}
+            />
           </TabsContent>
 
           <TabsContent value="analytics">

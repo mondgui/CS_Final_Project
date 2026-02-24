@@ -12,13 +12,14 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { api } from "../../lib/api";
 import { saveAuth, clearAuth } from "../../lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ redirect?: string }>();
   const queryClient = useQueryClient();
 
   const [email, setEmail] = useState("");
@@ -61,8 +62,13 @@ export default function LoginScreen() {
         role: result.user.role,
       });
 
-      // Route based on role
-      if (result.user.role === "teacher") {
+      // Route: redirect param (if present and safe) or by role
+      const redirect = typeof params.redirect === "string" ? params.redirect.trim() : undefined;
+      const isSafeRedirect = redirect && redirect.startsWith("/") && !redirect.startsWith("//");
+
+      if (isSafeRedirect) {
+        router.replace(redirect as any);
+      } else if (result.user.role === "teacher") {
         router.replace("/(teacher)/dashboard");
       } else {
         router.replace("/(student)/dashboard");
@@ -77,8 +83,17 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient colors={["#FF9076", "#FF6A5C"]} style={styles.header}>
-        <Text style={styles.title}>Welcome back 🎶</Text>
-        <Text style={styles.subtitle}>Log in to continue your journey</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.replace("/")}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.title}>Welcome back 🎶</Text>
+          <Text style={styles.subtitle}>Log in to continue your journey</Text>
+        </View>
       </LinearGradient>
 
       <KeyboardAvoidingView
@@ -173,11 +188,19 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF5F3" },
   header: {
-    paddingTop: 140,
+    paddingTop: 60,
     paddingBottom: 40,
     paddingHorizontal: 20,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    padding: 4,
+    marginBottom: 16,
+  },
+  headerTextWrap: {
+    paddingRight: 40,
   },
   title: {
     color: "white",

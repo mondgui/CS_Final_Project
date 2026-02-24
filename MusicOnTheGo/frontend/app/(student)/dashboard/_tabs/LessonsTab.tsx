@@ -56,7 +56,12 @@ type TransformedBooking = {
 // Toggle for verbose debug logging in this tab
 const DEBUG_STUDENT_LESSONS = false;
 
-export default function LessonsTab() {
+type LessonsTabProps = {
+  isGuest?: boolean;
+  onRequireLogin?: (redirect?: string) => void;
+};
+
+export default function LessonsTab({ isGuest = false, onRequireLogin }: LessonsTabProps) {
   const queryClient = useQueryClient();
 
   // Helper functions - defined before they're used
@@ -214,6 +219,7 @@ export default function LessonsTab() {
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
+    enabled: !isGuest,
   });
 
   // Flatten all pages into a single array
@@ -222,6 +228,10 @@ export default function LessonsTab() {
   }, [bookingsData]);
 
   const loadMoreBookings = () => {
+    if (isGuest && onRequireLogin) {
+      onRequireLogin("/(student)/dashboard");
+      return;
+    }
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }

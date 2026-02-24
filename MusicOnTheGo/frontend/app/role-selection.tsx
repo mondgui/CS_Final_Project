@@ -1,14 +1,19 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../hooks/use-auth';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PANEL_WAVE_R = 160;
 
 export default function ChooseRole() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ intent?: string }>();
+  const intent = Array.isArray(params.intent) ? params.intent[0] : params.intent;
+  const isSignupIntent = intent === 'signup';
+  const { isGuest } = useAuth();
 
   return (
     <View style={styles.container}>
@@ -57,7 +62,9 @@ export default function ChooseRole() {
             {/* Chunky, bold cards (Duolingo-style) */}
             <TouchableOpacity
               style={[styles.roleCard, styles.roleCardStudent]}
-              onPress={() => router.push('/register-student')}
+              onPress={() =>
+                isSignupIntent ? router.push('/register-student') : router.push('/(student)/dashboard')
+              }
               activeOpacity={0.85}
             >
               <View style={styles.cardIconWrap}>
@@ -79,7 +86,9 @@ export default function ChooseRole() {
 
             <TouchableOpacity
               style={[styles.roleCard, styles.roleCardTeacher]}
-              onPress={() => router.push('/register-teacher')}
+              onPress={() =>
+                isSignupIntent ? router.push('/register-teacher') : router.push('/(teacher)/dashboard')
+              }
               activeOpacity={0.85}
             >
               <View style={[styles.cardIconWrap, styles.cardIconTeacher]}>
@@ -99,8 +108,44 @@ export default function ChooseRole() {
               </View>
             </TouchableOpacity>
 
+            {isSignupIntent && isGuest && (
+              <View style={styles.guestExploreSection}>
+                <Text style={styles.guestExploreTitle}>Explore as a guest</Text>
+                <Text style={styles.guestExploreSubtitle}>
+                  No account needed. You can create one anytime.
+                </Text>
+                <View style={styles.guestExploreButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.guestExploreButton, styles.guestExploreButtonStudent]}
+                    onPress={() => router.push('/(student)/dashboard')}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="school-outline" size={18} color="#FF6A5C" />
+                    <Text style={styles.guestExploreButtonText}>Student</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.guestExploreButton, styles.guestExploreButtonTeacher]}
+                    onPress={() => router.push('/(teacher)/dashboard')}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="musical-notes-outline" size={18} color="#E85A4F" />
+                    <Text style={styles.guestExploreButtonText}>Teacher</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
             <TouchableOpacity onPress={() => router.back()} style={styles.backWrap}>
               <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => router.push('/(auth)/login')}
+              style={styles.loginLinkWrap}
+            >
+              <Text style={styles.loginLinkText}>Already have an account? </Text>
+              <Text style={styles.loginLinkBold}>Log in</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -186,6 +231,56 @@ const styles = StyleSheet.create({
     color: '#555',
     marginBottom: 24,
     fontWeight: '500',
+  },
+
+  guestExploreSection: {
+    marginTop: 6,
+    marginBottom: 14,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: '#FFF5F3',
+    borderWidth: 1,
+    borderColor: '#FFE0D6',
+  },
+  guestExploreTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#2D2D2D',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  guestExploreSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  guestExploreButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  guestExploreButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 2,
+    backgroundColor: '#FFF',
+  },
+  guestExploreButtonStudent: {
+    borderColor: '#FF6A5C',
+  },
+  guestExploreButtonTeacher: {
+    borderColor: '#E85A4F',
+  },
+  guestExploreButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#2D2D2D',
   },
 
   roleCard: {
@@ -277,6 +372,22 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 17,
+    color: '#FF6A5C',
+    fontWeight: '700',
+  },
+  loginLinkWrap: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    marginTop: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  loginLinkText: {
+    fontSize: 15,
+    color: '#555',
+  },
+  loginLinkBold: {
+    fontSize: 15,
     color: '#FF6A5C',
     fontWeight: '700',
   },

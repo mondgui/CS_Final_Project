@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../../../lib/api";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { Card } from "../../../components/ui/card";
+import { useAuth } from "../../../hooks/use-auth";
+import { useGuestDialog } from "../../../contexts/GuestActionContext";
 
 import HomeTab from "./_tabs/HomeTab";
 import LessonsTab from "./_tabs/LessonsTab";
@@ -62,17 +64,20 @@ export default function StudentDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const { isLoggedIn, isGuest } = useAuth();
+  const { showGuestDialog } = useGuestDialog();
   const [activeTab, setActiveTab] = useState<TabKey>("home");
 
-  // Load user with React Query
+  // Load user with React Query (only when logged in)
   const { data: user } = useQuery({
     queryKey: ["student-user"],
     queryFn: async () => {
       return await api("/api/users/me", { auth: true });
     },
+    enabled: isLoggedIn,
   });
 
-  // Fetch unread message count
+  // Fetch unread message count (only when logged in)
   const { data: unreadCount, refetch: refetchUnreadCount } = useQuery({
     queryKey: ["unread-messages-count"],
     queryFn: async () => {
@@ -83,7 +88,8 @@ export default function StudentDashboard() {
         return 0;
       }
     },
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 30000,
+    enabled: isLoggedIn,
   });
 
   // Refetch unread count when screen comes into focus (e.g., returning from chat)
@@ -132,7 +138,7 @@ export default function StudentDashboard() {
     };
   }, [user?.id, queryClient]);
 
-  // Teachers query with infinite pagination
+  // Teachers query with infinite pagination (works for guests — public API)
   const {
     data: teachersData,
     fetchNextPage,
@@ -180,7 +186,7 @@ export default function StudentDashboard() {
     return teachersData?.pages.flatMap((page) => page.teachers) || [];
   }, [teachersData]);
 
-  // Fetch student's bookings to get their teachers
+  // Fetch student's bookings (only when logged in)
   const { data: bookingsData } = useInfiniteQuery({
     queryKey: ["student-bookings"],
     queryFn: async ({ pageParam = 1 }) => {
@@ -203,6 +209,7 @@ export default function StudentDashboard() {
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
+    enabled: isLoggedIn,
   });
 
   // Extract unique teachers from bookings
@@ -236,7 +243,7 @@ export default function StudentDashboard() {
 
   const hasMoreTeachers = hasNextPage || false;
 
-  // Check if student has contacted a teacher (has a booking or at least one conversation)
+  // Check if student has contacted a teacher (only when logged in)
   const { data: conversationsData } = useQuery({
     queryKey: ["student-conversations-check"],
     queryFn: async () => {
@@ -296,7 +303,9 @@ export default function StudentDashboard() {
             {/* Profile Picture */}
             <TouchableOpacity
               style={styles.profilePictureContainer}
-              onPress={() => router.push("/(student)/edit-profile")}
+              onPress={() =>
+                isGuest ? showGuestDialog() : router.push("/(student)/edit-profile")
+              }
               activeOpacity={0.7}
             >
               {user?.profileImage ? (
@@ -321,7 +330,9 @@ export default function StudentDashboard() {
             <View style={styles.headerButtons}>
               <TouchableOpacity
                 style={styles.headerIconButton}
-                onPress={() => router.push("/messages")}
+                onPress={() =>
+                  isGuest ? showGuestDialog() : router.push("/messages")
+                }
               >
                 <Ionicons name="chatbubbles-outline" size={24} color="white" />
                 {unreadCount !== undefined && unreadCount > 0 ? (
@@ -336,8 +347,22 @@ export default function StudentDashboard() {
           </View>
         </LinearGradient>
 
-        {/* Persistent notice until student contacts a teacher (home tab only) */}
-        {activeTab === "home" && !hasContactedTeacher && (
+        {/* Persistent notice until student contacts a teacher (home tab only); for guests, prompt to sign in */}
+        {activeTab === "home" && (isGuest ? (
+          <View style={styles.contactBannerWrapper}>
+            <Card style={styles.contactBanner}>
+              <View style={styles.contactBannerContent}>
+                <Ionicons name="information-circle-outline" size={26} color="#FF6A5C" style={styles.contactBannerIcon} />
+                <View style={styles.contactBannerTextBlock}>
+                  <Text style={styles.contactBannerTitle}>Browse teachers</Text>
+                  <Text style={styles.contactBannerText}>
+                    You can explore teacher profiles. Sign in to book lessons, message teachers, and manage your account.
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          </View>
+        ) : !hasContactedTeacher && (
           <View style={styles.contactBannerWrapper}>
             <Card style={styles.contactBanner}>
               <View style={styles.contactBannerContent}>
@@ -351,7 +376,7 @@ export default function StudentDashboard() {
               </View>
             </Card>
           </View>
-        )}
+        ))}
 
         {/* Screen content depending on active tab */}
         <View style={styles.contentWrapper}>
@@ -364,10 +389,22 @@ export default function StudentDashboard() {
                 onLoadMore={loadMoreTeachers}
                 myTeachers={myTeachers}
                 studentCity={user?.location ? (user.location as string).split(",")[0]?.trim() || undefined : undefined}
+                isGuest={isGuest}
+                onRequireLogin={showGuestDialog}
               />
             )}
-          {activeTab === "lessons" && <LessonsTab />}
-          {activeTab === "settings" && <SettingsTab />}
+          {activeTab === "lessons" && (
+            <LessonsTab
+              isGuest={isGuest}
+              onRequireLogin={showGuestDialog}
+            />
+          )}
+          {activeTab === "settings" && (
+            <SettingsTab
+              isGuest={isGuest}
+              onRequireLogin={showGuestDialog}
+            />
+          )}
         </View>
       </ScrollView>
 

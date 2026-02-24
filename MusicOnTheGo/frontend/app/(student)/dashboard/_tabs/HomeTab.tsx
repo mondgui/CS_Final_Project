@@ -51,6 +51,8 @@ type HomeTabProps = {
   onLoadMore?: () => void;
   myTeachers?: Teacher[]; // Teachers the student has booked with
   studentCity?: string; // Student's city from profile (e.g. first part of location) for "Teachers in my city"
+  isGuest?: boolean;
+  onRequireLogin?: (redirect?: string) => void;
 };
 
 export default function HomeTab({
@@ -61,6 +63,8 @@ export default function HomeTab({
   onLoadMore,
   myTeachers = [],
   studentCity,
+  isGuest = false,
+  onRequireLogin,
 }: HomeTabProps) {
   const router = useRouter();
   const [selectedInstrument, setSelectedInstrument] = useState("all");
@@ -224,7 +228,8 @@ export default function HomeTab({
         <Card
           style={styles.quickAccessCard}
           onPress={() => {
-            router.push("/(student)/practice-log");
+            if (isGuest && onRequireLogin) onRequireLogin("/(student)/practice-log");
+            else router.push("/(student)/practice-log");
           }}
         >
           <Ionicons name="trending-up-outline" size={20} color="#FF6A5C" />
@@ -234,7 +239,8 @@ export default function HomeTab({
         <Card
           style={styles.quickAccessCard}
           onPress={() => {
-            router.push("/(student)/resources");
+            if (isGuest && onRequireLogin) onRequireLogin("/(student)/resources");
+            else router.push("/(student)/resources");
           }}
         >
           <Ionicons name="book-outline" size={20} color="#FF9076" />
@@ -244,7 +250,8 @@ export default function HomeTab({
         <Card
           style={styles.quickAccessCard}
           onPress={() => {
-            router.push("/(student)/community");
+            if (isGuest && onRequireLogin) onRequireLogin("/(student)/community");
+            else router.push("/(student)/community");
           }}
         >
           <Ionicons name="people-outline" size={20} color="#10B981" />
@@ -254,7 +261,8 @@ export default function HomeTab({
         <Card
           style={styles.quickAccessCard}
           onPress={() => {
-            router.push("/(student)/practice-tools");
+            if (isGuest && onRequireLogin) onRequireLogin("/(student)/practice-tools");
+            else router.push("/(student)/practice-tools");
           }}
         >
           <Ionicons name="construct-outline" size={20} color="#4A90E2" />

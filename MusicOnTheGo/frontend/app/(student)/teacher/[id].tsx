@@ -11,6 +11,8 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../../lib/api";
+import { useAuth } from "../../../hooks/use-auth";
+import { useGuestDialog } from "../../../contexts/GuestActionContext";
 import { Avatar } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +64,8 @@ export default function TeacherProfileScreen() {
   const params = useLocalSearchParams();
   const teacherId = Array.isArray(params.id) ? params.id[0] : params.id || "";
   const router = useRouter();
+  const { isGuest } = useAuth();
+  const { showGuestDialog } = useGuestDialog();
 
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,25 +82,23 @@ export default function TeacherProfileScreen() {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [hasBooking, setHasBooking] = useState(false);
 
-  // Check if conversation exists with this teacher
+  // Check if conversation exists with this teacher (skip when guest)
   const checkConversation = useCallback(async () => {
-    if (!teacherId) return;
+    if (!teacherId || isGuest) return;
     try {
       setCheckingConversation(true);
       const messages = await api(`/api/messages/conversation/${teacherId}`, { auth: true });
-      // If there are any messages, a conversation exists
       setHasConversation(Array.isArray(messages) && messages.length > 0);
     } catch (err: any) {
-      // If error or no messages, no conversation exists
       setHasConversation(false);
     } finally {
       setCheckingConversation(false);
     }
-  }, [teacherId]);
+  }, [teacherId, isGuest]);
 
-  // Check if student has a booking with this teacher (required to leave a review)
+  // Check if student has a booking with this teacher (required to leave a review) — skip when guest
   const checkBooking = useCallback(async () => {
-    if (!teacherId) return;
+    if (!teacherId || isGuest) return;
     try {
       const bookings = await api("/api/bookings/student/me", { auth: true });
       const bookingsArray = bookings?.bookings || bookings || [];
@@ -111,7 +113,7 @@ export default function TeacherProfileScreen() {
       console.log("Error checking booking:", err.message);
       setHasBooking(false);
     }
-  }, [teacherId]);
+  }, [teacherId, isGuest]);
 
   // Load reviews for this teacher
   const loadReviews = useCallback(async () => {
@@ -128,9 +130,9 @@ export default function TeacherProfileScreen() {
     }
   }, [teacherId]);
 
-  // Load student's own review for this teacher
+  // Load student's own review for this teacher — skip when guest
   const loadMyReview = useCallback(async () => {
-    if (!teacherId) return;
+    if (!teacherId || isGuest) return;
     try {
       const review = await api(`/api/reviews/teacher/${teacherId}/me`, { auth: true });
       setMyReview(review);
@@ -144,7 +146,7 @@ export default function TeacherProfileScreen() {
       setReviewRating(5);
       setReviewComment("");
     }
-  }, [teacherId]);
+  }, [teacherId, isGuest]);
 
   // Fetch teacher data
   const fetchTeacher = useCallback(async () => {
@@ -371,6 +373,10 @@ export default function TeacherProfileScreen() {
   }
 
   const handleBookLesson = (slot?: AvailabilitySlot) => {
+    if (isGuest) {
+      showGuestDialog();
+      return;
+    }
     const params: any = { teacherId: teacher?.id || teacher?._id };
     
     // If a specific slot was clicked, pass the day and time information
@@ -398,6 +404,10 @@ export default function TeacherProfileScreen() {
   };
 
   const handleContact = () => {
+    if (isGuest) {
+      showGuestDialog();
+      return;
+    }
     // Navigate to chat if conversation exists, otherwise to contact form
     if (hasConversation) {
       router.push({
