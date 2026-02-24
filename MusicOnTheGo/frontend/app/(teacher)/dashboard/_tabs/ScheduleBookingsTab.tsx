@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useGuestDialog } from "../../../../contexts/GuestActionContext";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,8 +28,6 @@ type Props = {
   onAccept?: (id: string) => void;
   onReject?: (id: string) => void;
   onCancel?: (id: string) => void;
-  isGuest?: boolean;
-  onRequireLogin?: () => void;
 };
 
 // Helper function to parse date from booking
@@ -251,13 +250,12 @@ export default function ScheduleBookingsTab({
   onAccept,
   onReject,
   onCancel,
-  isGuest = false,
-  onRequireLogin,
 }: Props) {
   const router = useRouter();
-  const handleAccept = isGuest && onRequireLogin ? (_id: string) => onRequireLogin() : onAccept;
-  const handleReject = isGuest && onRequireLogin ? (_id: string) => onRequireLogin() : onReject;
-  const handleCancel = isGuest && onRequireLogin ? (_id: string) => onRequireLogin() : onCancel;
+  const { runIfLoggedIn } = useGuestDialog();
+  const handleAccept = (id: string) => runIfLoggedIn(() => onAccept?.(id));
+  const handleReject = (id: string) => runIfLoggedIn(() => onReject?.(id));
+  const handleCancel = (id: string) => runIfLoggedIn(() => onCancel?.(id));
   // Separate bookings into upcoming and past
   const upcomingBookings = bookings.filter(b => !isPastBooking(b));
   const pastBookings = bookings.filter(b => isPastBooking(b));
@@ -361,7 +359,7 @@ export default function ScheduleBookingsTab({
             Students are making the first move by sending inquiries. You'll see inquiries in{" "}
             <Text 
               style={styles.emptyStateLink}
-              onPress={() => (isGuest && onRequireLogin ? onRequireLogin() : router.push("/messages"))}
+              onPress={() => runIfLoggedIn(() => router.push("/messages"))}
             >
               Messages
             </Text>

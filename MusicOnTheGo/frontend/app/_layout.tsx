@@ -74,7 +74,7 @@ export default function RootLayout() {
             {/* Public screens */}
             <Stack.Screen name="index" />
             <Stack.Screen name="role-selection" />
-            
+
             {/* Route groups */}
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(student)" />

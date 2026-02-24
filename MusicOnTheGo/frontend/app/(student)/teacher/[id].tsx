@@ -65,7 +65,7 @@ export default function TeacherProfileScreen() {
   const teacherId = Array.isArray(params.id) ? params.id[0] : params.id || "";
   const router = useRouter();
   const { isGuest } = useAuth();
-  const { showGuestDialog } = useGuestDialog();
+  const { runIfLoggedIn } = useGuestDialog();
 
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [loading, setLoading] = useState(true);
@@ -373,57 +373,40 @@ export default function TeacherProfileScreen() {
   }
 
   const handleBookLesson = (slot?: AvailabilitySlot) => {
-    if (isGuest) {
-      showGuestDialog();
-      return;
-    }
-    const params: any = { teacherId: teacher?.id || teacher?._id };
-    
-    // If a specific slot was clicked, pass the day and time information
-    if (slot) {
-      // Parse the timeRange (e.g., "2:00 PM - 4:00 PM") to get start and end times
-      const timeParts = slot.timeRange.split(" - ");
-      const startTime = timeParts[0]; // Get "2:00 PM"
-      const endTime = timeParts[1] || ""; // Get "4:00 PM" if available
-      
-      params.selectedDay = slot.day; // Display format
-      params.selectedTime = startTime;
-      params.selectedTimeRange = slot.timeRange; // Pass full range for display
-      if (slot.isoDate) {
-        params.selectedDateISO = slot.isoDate; // ISO format for backend
+    runIfLoggedIn(() => {
+      const params: any = { teacherId: teacher?.id || teacher?._id };
+      if (slot) {
+        const timeParts = slot.timeRange.split(" - ");
+        const startTime = timeParts[0];
+        const endTime = timeParts[1] || "";
+        params.selectedDay = slot.day;
+        params.selectedTime = startTime;
+        params.selectedTimeRange = slot.timeRange;
+        if (slot.isoDate) params.selectedDateISO = slot.isoDate;
+        if (endTime) params.selectedEndTime = endTime;
       }
-      if (endTime) {
-        params.selectedEndTime = endTime;
-      }
-    }
-    
-    router.push({
-      pathname: "/booking/booking-confirmation",
-      params,
+      router.push({ pathname: "/booking/booking-confirmation", params });
     });
   };
 
   const handleContact = () => {
-    if (isGuest) {
-      showGuestDialog();
-      return;
-    }
-    // Navigate to chat if conversation exists, otherwise to contact form
-    if (hasConversation) {
-      router.push({
-        pathname: "/chat/[id]",
-        params: { 
-          id: teacher?.id || teacher?._id || "",
-          contactName: teacher?.name || "Teacher",
-          contactRole: "teacher"
-        },
-      });
-    } else {
-      router.push({
-        pathname: "/booking/contact-detail",
-        params: { teacherId: teacher?.id || teacher?._id },
-      });
-    }
+    runIfLoggedIn(() => {
+      if (hasConversation) {
+        router.push({
+          pathname: "/chat/[id]",
+          params: {
+            id: teacher?.id || teacher?._id || "",
+            contactName: teacher?.name || "Teacher",
+            contactRole: "teacher",
+          },
+        });
+      } else {
+        router.push({
+          pathname: "/booking/contact-detail",
+          params: { teacherId: teacher?.id || teacher?._id },
+        });
+      }
+    });
   };
 
   return (

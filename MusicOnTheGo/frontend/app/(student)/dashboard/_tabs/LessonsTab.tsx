@@ -9,6 +9,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "../../../../hooks/use-auth";
+import { useGuestDialog } from "../../../../contexts/GuestActionContext";
 import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
 import { Avatar } from "../../../../components/ui/avatar";
@@ -56,13 +58,10 @@ type TransformedBooking = {
 // Toggle for verbose debug logging in this tab
 const DEBUG_STUDENT_LESSONS = false;
 
-type LessonsTabProps = {
-  isGuest?: boolean;
-  onRequireLogin?: (redirect?: string) => void;
-};
-
-export default function LessonsTab({ isGuest = false, onRequireLogin }: LessonsTabProps) {
+export default function LessonsTab() {
   const queryClient = useQueryClient();
+  const { isGuest } = useAuth();
+  const { runIfLoggedIn } = useGuestDialog();
 
   // Helper functions - defined before they're used
   // Convert day name to next occurrence date
@@ -228,13 +227,11 @@ export default function LessonsTab({ isGuest = false, onRequireLogin }: LessonsT
   }, [bookingsData]);
 
   const loadMoreBookings = () => {
-    if (isGuest && onRequireLogin) {
-      onRequireLogin("/(student)/dashboard");
-      return;
-    }
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
+    runIfLoggedIn(() => {
+      if (hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    });
   };
 
   // Initialize Socket.io for real-time booking updates

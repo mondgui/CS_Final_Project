@@ -1,5 +1,6 @@
 // contexts/GuestActionContext.tsx
 // Gentle dialog when guests tap protected actions: "Create account" → role-selection, "Keep exploring" → dismiss
+// runIfLoggedIn: check token at click time so guests always see the dialog (no reliance on React state).
 
 import React, { createContext, useContext, useState, useCallback } from "react";
 import {
@@ -12,9 +13,12 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { getTokenFromStorage } from "../lib/auth";
 
 type GuestActionContextValue = {
   showGuestDialog: () => void;
+  /** Run the callback only if user has a token; otherwise show the guest dialog. Use for every protected action. */
+  runIfLoggedIn: (fn: () => void) => void;
 };
 
 const GuestActionContext = createContext<GuestActionContextValue | null>(null);
@@ -35,9 +39,20 @@ export function GuestActionProvider({ children }: { children: React.ReactNode })
     setVisible(true);
   }, []);
 
+  const runIfLoggedIn = useCallback(
+    (fn: () => void) => {
+      getTokenFromStorage().then((token) => {
+        const hasToken = typeof token === "string" && token.trim().length > 0;
+        if (hasToken) fn();
+        else setVisible(true);
+      });
+    },
+    []
+  );
+
   const handleCreateAccount = useCallback(() => {
     setVisible(false);
-    router.push({ pathname: "/role-selection", params: { intent: "signup" } });
+    router.push("/role-selection");
   }, [router]);
 
   const handleKeepExploring = useCallback(() => {
@@ -45,7 +60,7 @@ export function GuestActionProvider({ children }: { children: React.ReactNode })
   }, []);
 
   return (
-    <GuestActionContext.Provider value={{ showGuestDialog }}>
+    <GuestActionContext.Provider value={{ showGuestDialog, runIfLoggedIn }}>
       {children}
       <Modal
         visible={visible}

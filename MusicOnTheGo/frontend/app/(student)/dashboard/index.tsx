@@ -65,7 +65,7 @@ export default function StudentDashboard() {
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { isLoggedIn, isGuest } = useAuth();
-  const { showGuestDialog } = useGuestDialog();
+  const { runIfLoggedIn } = useGuestDialog();
   const [activeTab, setActiveTab] = useState<TabKey>("home");
 
   // Load user with React Query (only when logged in)
@@ -303,9 +303,7 @@ export default function StudentDashboard() {
             {/* Profile Picture */}
             <TouchableOpacity
               style={styles.profilePictureContainer}
-              onPress={() =>
-                isGuest ? showGuestDialog() : router.push("/(student)/edit-profile")
-              }
+              onPress={() => runIfLoggedIn(() => router.push("/(student)/edit-profile"))}
               activeOpacity={0.7}
             >
               {user?.profileImage ? (
@@ -330,9 +328,7 @@ export default function StudentDashboard() {
             <View style={styles.headerButtons}>
               <TouchableOpacity
                 style={styles.headerIconButton}
-                onPress={() =>
-                  isGuest ? showGuestDialog() : router.push("/messages")
-                }
+                onPress={() => runIfLoggedIn(() => router.push("/messages"))}
               >
                 <Ionicons name="chatbubbles-outline" size={24} color="white" />
                 {unreadCount !== undefined && unreadCount > 0 ? (
@@ -356,7 +352,7 @@ export default function StudentDashboard() {
                 <View style={styles.contactBannerTextBlock}>
                   <Text style={styles.contactBannerTitle}>Browse teachers</Text>
                   <Text style={styles.contactBannerText}>
-                    You can explore teacher profiles. Sign in to book lessons, message teachers, and manage your account.
+                    You can explore teacher profiles. Teachers cannot see you or contact you first—explore profiles and send an inquiry to the teacher that meets your needs. Sign in to book lessons, message teachers, and manage your account.
                   </Text>
                 </View>
               </View>
@@ -389,27 +385,15 @@ export default function StudentDashboard() {
                 onLoadMore={loadMoreTeachers}
                 myTeachers={myTeachers}
                 studentCity={user?.location ? (user.location as string).split(",")[0]?.trim() || undefined : undefined}
-                isGuest={isGuest}
-                onRequireLogin={showGuestDialog}
               />
             )}
-          {activeTab === "lessons" && (
-            <LessonsTab
-              isGuest={isGuest}
-              onRequireLogin={showGuestDialog}
-            />
-          )}
-          {activeTab === "settings" && (
-            <SettingsTab
-              isGuest={isGuest}
-              onRequireLogin={showGuestDialog}
-            />
-          )}
+          {activeTab === "lessons" && <LessonsTab />}
+          {activeTab === "settings" && <SettingsTab />}
         </View>
       </ScrollView>
 
       {/* Bottom Gradient Tab Bar */}
-      <BottomTabBar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <BottomTabBar activeTab={activeTab} setActiveTab={setActiveTab} runIfLoggedIn={runIfLoggedIn} />
     </View>
   );
 }
@@ -419,20 +403,24 @@ export default function StudentDashboard() {
 type BottomTabBarProps = {
   activeTab: TabKey;
   setActiveTab: (tab: TabKey) => void;
+  runIfLoggedIn: (fn: () => void) => void;
 };
 
-function BottomTabBar({ activeTab, setActiveTab }: BottomTabBarProps) {
+function BottomTabBar({ activeTab, setActiveTab, runIfLoggedIn }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.tabBar, { bottom: 12 + insets.bottom }]}>
       {TABS.map((tab) => {
         const isActive = tab.key === activeTab;
+        const isProtected = tab.key === "lessons";
+        const onPress = () =>
+          isProtected ? runIfLoggedIn(() => setActiveTab(tab.key)) : setActiveTab(tab.key);
 
         return (
           <TouchableOpacity
             key={tab.key}
             style={styles.tabButton}
-            onPress={() => setActiveTab(tab.key)}
+            onPress={onPress}
           >
             <LinearGradient
               colors={

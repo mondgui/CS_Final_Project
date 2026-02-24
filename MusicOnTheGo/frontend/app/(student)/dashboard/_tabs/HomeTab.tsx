@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
+import { useGuestDialog } from "../../../../contexts/GuestActionContext";
 import { Card } from "../../../../components/ui/card";
 import { Button } from "../../../../components/ui/button";
 import { Avatar } from "../../../../components/ui/avatar";
@@ -51,8 +52,6 @@ type HomeTabProps = {
   onLoadMore?: () => void;
   myTeachers?: Teacher[]; // Teachers the student has booked with
   studentCity?: string; // Student's city from profile (e.g. first part of location) for "Teachers in my city"
-  isGuest?: boolean;
-  onRequireLogin?: (redirect?: string) => void;
 };
 
 export default function HomeTab({
@@ -63,10 +62,9 @@ export default function HomeTab({
   onLoadMore,
   myTeachers = [],
   studentCity,
-  isGuest = false,
-  onRequireLogin,
 }: HomeTabProps) {
   const router = useRouter();
+  const { runIfLoggedIn } = useGuestDialog();
   const [selectedInstrument, setSelectedInstrument] = useState("all");
   const [instrumentSearchText, setInstrumentSearchText] = useState("");
   const [priceRange, setPriceRange] = useState("all");
@@ -227,10 +225,7 @@ export default function HomeTab({
       <View style={styles.quickAccessRow}>
         <Card
           style={styles.quickAccessCard}
-          onPress={() => {
-            if (isGuest && onRequireLogin) onRequireLogin("/(student)/practice-log");
-            else router.push("/(student)/practice-log");
-          }}
+          onPress={() => runIfLoggedIn(() => router.push("/(student)/practice-log"))}
         >
           <Ionicons name="trending-up-outline" size={20} color="#FF6A5C" />
           <Text style={styles.quickAccessText} numberOfLines={1}>Progress</Text>
@@ -238,10 +233,7 @@ export default function HomeTab({
 
         <Card
           style={styles.quickAccessCard}
-          onPress={() => {
-            if (isGuest && onRequireLogin) onRequireLogin("/(student)/resources");
-            else router.push("/(student)/resources");
-          }}
+          onPress={() => runIfLoggedIn(() => router.push("/(student)/resources"))}
         >
           <Ionicons name="book-outline" size={20} color="#FF9076" />
           <Text style={styles.quickAccessText} numberOfLines={1}>Resources</Text>
@@ -249,10 +241,7 @@ export default function HomeTab({
 
         <Card
           style={styles.quickAccessCard}
-          onPress={() => {
-            if (isGuest && onRequireLogin) onRequireLogin("/(student)/community");
-            else router.push("/(student)/community");
-          }}
+          onPress={() => runIfLoggedIn(() => router.push("/(student)/community"))}
         >
           <Ionicons name="people-outline" size={20} color="#10B981" />
           <Text style={styles.quickAccessText} numberOfLines={1}>Community</Text>
@@ -260,10 +249,7 @@ export default function HomeTab({
 
         <Card
           style={styles.quickAccessCard}
-          onPress={() => {
-            if (isGuest && onRequireLogin) onRequireLogin("/(student)/practice-tools");
-            else router.push("/(student)/practice-tools");
-          }}
+          onPress={() => runIfLoggedIn(() => router.push("/(student)/practice-tools"))}
         >
           <Ionicons name="construct-outline" size={20} color="#4A90E2" />
           <Text style={styles.quickAccessText} numberOfLines={1}>Tools</Text>

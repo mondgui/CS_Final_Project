@@ -65,7 +65,7 @@ export default function TeacherDashboard() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [innerTab, setInnerTab] = useState<string>("schedule-bookings");
-  const { showGuestDialog } = useGuestDialog();
+  const { runIfLoggedIn } = useGuestDialog();
 
   // Fetch unread message count (only when logged in)
   const { data: unreadMessagesCount, refetch: refetchUnreadMessages } = useQuery({
@@ -523,9 +523,7 @@ export default function TeacherDashboard() {
             {/* Profile Picture */}
             <TouchableOpacity
               style={styles.profilePictureContainer}
-              onPress={() =>
-                isGuest ? showGuestDialog() : setActiveTab("settings")
-              }
+              onPress={() => runIfLoggedIn(() => setActiveTab("settings"))}
               activeOpacity={0.7}
             >
               {user?.profileImage ? (
@@ -562,9 +560,7 @@ export default function TeacherDashboard() {
             <View style={styles.headerButtons}>
               <TouchableOpacity
                 style={styles.headerIconButton}
-                onPress={() =>
-                  isGuest ? showGuestDialog() : router.push("/messages")
-                }
+                onPress={() => runIfLoggedIn(() => router.push("/messages"))}
               >
                 <Ionicons name="chatbubbles-outline" size={24} color="white" />
                 {totalUnreadCount > 0 ? (
@@ -596,8 +592,6 @@ export default function TeacherDashboard() {
               onReject={handleRejectBooking}
               onCancel={handleCancelBooking}
               quickAccessFontSize={quickAccessFontSize}
-              isGuest={isGuest}
-              onRequireLogin={showGuestDialog}
             />
           )}
           {activeTab === "bookings" && (
@@ -610,21 +604,14 @@ export default function TeacherDashboard() {
               onAccept={handleAcceptBooking}
               onReject={handleRejectBooking}
               onCancel={handleCancelBooking}
-              isGuest={isGuest}
-              onRequireLogin={showGuestDialog}
             />
           )}
-          {activeTab === "settings" && (
-            <SettingsTab
-              isGuest={isGuest}
-              onRequireLogin={showGuestDialog}
-            />
-          )}
+          {activeTab === "settings" && <SettingsTab />}
         </View>
       </ScrollView>
 
       {/* Bottom Gradient Tab Bar */}
-      <BottomTabBar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <BottomTabBar activeTab={activeTab} setActiveTab={setActiveTab} runIfLoggedIn={runIfLoggedIn} />
     </View>
   );
 }
@@ -662,15 +649,15 @@ function HomeTabContent({
   onReject,
   onCancel,
   quickAccessFontSize = 9,
-  isGuest = false,
-  onRequireLogin,
+  isGuest: isGuestProp = false,
+  onRequireLogin: onRequireLoginProp,
 }: HomeTabContentProps) {
   const router = useRouter();
+  const { runIfLoggedIn } = useGuestDialog();
   const quickAccessTextStyle = [styles.quickAccessText, { fontSize: quickAccessFontSize }];
 
   const handleQuickAccess = (path: string) => {
-    if (isGuest && onRequireLogin) onRequireLogin(path);
-    else router.push(path as any);
+    runIfLoggedIn(() => router.push(path as any));
   };
 
   return (
@@ -728,17 +715,11 @@ function HomeTabContent({
               onAccept={onAccept}
               onReject={onReject}
               onCancel={onCancel}
-              isGuest={isGuest}
-              onRequireLogin={onRequireLogin}
             />
           </TabsContent>
 
           <TabsContent value="times">
-            <TimesTab
-              availability={availabilityData}
-              isGuest={isGuest}
-              onRequireLogin={onRequireLogin}
-            />
+            <TimesTab availability={availabilityData} />
           </TabsContent>
 
           <TabsContent value="analytics">
@@ -761,20 +742,24 @@ function HomeTabContent({
 type BottomTabBarProps = {
   activeTab: TabKey;
   setActiveTab: (tab: TabKey) => void;
+  runIfLoggedIn: (fn: () => void) => void;
 };
 
-function BottomTabBar({ activeTab, setActiveTab }: BottomTabBarProps) {
+function BottomTabBar({ activeTab, setActiveTab, runIfLoggedIn }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.tabBar, { bottom: 12 + insets.bottom }]}>
       {TABS.map((tab) => {
         const isActive = tab.key === activeTab;
+        const isProtected = tab.key === "bookings";
+        const onPress = () =>
+          isProtected ? runIfLoggedIn(() => setActiveTab(tab.key)) : setActiveTab(tab.key);
 
         return (
           <TouchableOpacity
             key={tab.key}
             style={styles.tabButton}
-            onPress={() => setActiveTab(tab.key)}
+            onPress={onPress}
           >
             <LinearGradient
               colors={

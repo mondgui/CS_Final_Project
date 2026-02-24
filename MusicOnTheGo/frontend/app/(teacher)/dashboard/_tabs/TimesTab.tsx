@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
+import { useAuth } from "../../../../hooks/use-auth";
+import { useGuestDialog } from "../../../../contexts/GuestActionContext";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -18,8 +20,6 @@ type Availability = {
 };
 type Props = {
   availability: Availability[];
-  isGuest?: boolean;
-  onRequireLogin?: (path?: string) => void;
 };
 
 // Generate individual time options with 15-minute intervals
@@ -68,7 +68,9 @@ function isTimeBefore(time1: string, time2: string): boolean {
 
 const TIME_OPTIONS = generateTimeOptions();
 
-export default function TimesTab({ availability: initialAvailability, isGuest = false, onRequireLogin }: Props) {
+export default function TimesTab({ availability: initialAvailability }: Props) {
+  const { isGuest } = useAuth();
+  const { runIfLoggedIn } = useGuestDialog();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedFromTime, setSelectedFromTime] = useState("");
@@ -251,22 +253,14 @@ export default function TimesTab({ availability: initialAvailability, isGuest = 
 
   return (
     <View style={styles.section}>
-      {isGuest && onRequireLogin ? (
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <Button
           style={styles.addButton}
-          onPress={() => onRequireLogin("/(teacher)/dashboard")}
+          onPress={() => runIfLoggedIn(() => setDialogOpen(true))}
         >
           <Ionicons name="add-outline" size={18} color="white" style={{ marginRight: 8 }} />
           <Text style={styles.addButtonText}>Add Available Time</Text>
         </Button>
-      ) : (
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogTrigger asChild>
-          <Button style={styles.addButton}>
-            <Ionicons name="add-outline" size={18} color="white" style={{ marginRight: 8 }} />
-            <Text style={styles.addButtonText}>Add Available Time</Text>
-          </Button>
-        </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Availability</DialogTitle>
@@ -332,7 +326,6 @@ export default function TimesTab({ availability: initialAvailability, isGuest = 
           </View>
         </DialogContent>
       </Dialog>
-      )}
 
       {loading ? (
         <ActivityIndicator color="#FF6A5C" style={{ marginTop: 20 }} />

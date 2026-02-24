@@ -8,6 +8,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useAuth } from "../../../../hooks/use-auth";
+import { useGuestDialog } from "../../../../contexts/GuestActionContext";
 import { api } from "../../../../lib/api";
 import { Card } from "../../../../components/ui/card";
 import { Switch } from "../../../../components/ui/switch";
@@ -15,14 +17,11 @@ import { Separator } from "../../../../components/ui/separator";
 import { clearAuth } from "../../../../lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
 
-type SettingsTabProps = {
-  isGuest?: boolean;
-  onRequireLogin?: (redirect?: string) => void;
-};
-
-export default function SettingsTab({ isGuest = false, onRequireLogin }: SettingsTabProps) {
+export default function SettingsTab() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isGuest } = useAuth();
+  const { runIfLoggedIn } = useGuestDialog();
   const [loading, setLoading] = useState(!isGuest);
 
   // Notification state
@@ -49,28 +48,23 @@ export default function SettingsTab({ isGuest = false, onRequireLogin }: Setting
 
   // Save notification preference
   const handlePushNotificationsChange = async (value: boolean) => {
-    if (isGuest && onRequireLogin) {
-      onRequireLogin("/(teacher)/dashboard");
-      return;
-    }
-    setPushNotifications(value);
-    try {
-      await api("/api/users/me", {
-        method: "PUT",
-        auth: true,
-        body: JSON.stringify({ pushNotificationsEnabled: value }),
-      });
-    } catch (err) {
-      console.error("Failed to update notification preference:", err);
-      setPushNotifications(!value);
-    }
+    runIfLoggedIn(async () => {
+      setPushNotifications(value);
+      try {
+        await api("/api/users/me", {
+          method: "PUT",
+          auth: true,
+          body: JSON.stringify({ pushNotificationsEnabled: value }),
+        });
+      } catch (err) {
+        console.error("Failed to update notification preference:", err);
+        setPushNotifications(!value);
+      }
+    });
   };
 
   const handleLogout = async () => {
-    if (isGuest && onRequireLogin) {
-      onRequireLogin("/(teacher)/dashboard");
-      return;
-    }
+    runIfLoggedIn(async () => {
     try {
       await clearAuth();
       queryClient.clear();
@@ -79,14 +73,11 @@ export default function SettingsTab({ isGuest = false, onRequireLogin }: Setting
       console.error("Logout error:", error);
       router.replace("/(auth)/login");
     }
+    });
   };
 
   const handleSettingPress = (path: string) => {
-    if (isGuest && onRequireLogin) {
-      onRequireLogin(path);
-      return;
-    }
-    router.push(path as any);
+    runIfLoggedIn(() => router.push(path as any));
   };
 
   if (loading) {
